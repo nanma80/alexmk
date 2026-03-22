@@ -39,3 +39,4 @@ alexmk/
 - **Always update root index.html** — when adding or removing a game, update the game list on the landing page.
 - **Use relative paths** — inside a game directory, reference assets with relative paths (e.g., `./style.css`, not `/bradymk/cool-game/style.css`).
 - **Test locally** — you can open `index.html` directly in a browser to test before pushing.
+- **Ask before committing** — do NOT automatically git commit or push. Always confirm with the user before committing. Batch all related changes into a single commit to keep git history clean.
