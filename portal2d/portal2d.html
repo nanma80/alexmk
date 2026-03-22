@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Portal 2D - Escape the Room</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Courier New', monospace;
+  color: #e0e0e0;
+  user-select: none;
+}
+#header {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  margin-bottom: 10px;
+}
+#header h1 {
+  font-size: 24px;
+  color: #00d4ff;
+  text-shadow: 0 0 10px #00d4ff55;
+}
+#levelInfo {
+  font-size: 16px;
+  color: #ff8c00;
+}
+#gameCanvas {
+  border: 2px solid #333;
+  cursor: crosshair;
+  display: block;
+}
+#controls {
+  margin-top: 12px;
+  font-size: 13px;
+  color: #888;
+  text-align: center;
+  line-height: 1.6;
+}
+#message {
+  margin-top: 10px;
+  font-size: 18px;
+  color: #00ff88;
+  height: 24px;
+  text-shadow: 0 0 8px #00ff8855;
+}
+#overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+#overlay.active { display: flex; }
+#overlay h2 { font-size: 36px; color: #00ff88; margin-bottom: 20px; }
+#overlay p { font-size: 18px; margin-bottom: 30px; color: #ccc; }
+#overlay button {
+  padding: 12px 32px;
+  font-size: 18px;
+  background: #00d4ff;
+  color: #1a1a2e;
+  border: none;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  font-weight: bold;
+}
+#overlay button:hover { background: #33e0ff; }
+#overlay .btn-row { display: flex; gap: 16px; }
+#levelSelect {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+#levelSelect h1 {
+  font-size: 42px;
+  color: #00d4ff;
+  text-shadow: 0 0 15px #00d4ff55;
+  margin-bottom: 8px;
+}
+#levelSelect p {
+  font-size: 16px;
+  color: #888;
+  margin-bottom: 32px;
+}
+#levelGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+}
+#levelGrid button {
+  width: 180px;
+  padding: 20px 16px;
+  font-size: 16px;
+  background: #2a2a4a;
+  color: #e0e0e0;
+  border: 2px solid #3a3a5c;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+  text-align: left;
+  line-height: 1.5;
+}
+#levelGrid button:hover {
+  background: #3a3a6a;
+  border-color: #00d4ff;
+}
+#levelGrid button .level-num {
+  font-size: 14px;
+  color: #00d4ff;
+  display: block;
+  margin-bottom: 4px;
+}
+#levelGrid button .level-name {
+  font-size: 18px;
+  font-weight: bold;
+  display: block;
+}
+#gameArea { display: none; }
+#gameArea.active { display: flex; flex-direction: column; align-items: center; }
+</style>
+</head>
+<body>
+<div id="levelSelect">
+  <h1>Portal 2D</h1>
+  <p>Select a level</p>
+  <div id="levelGrid"></div>
+</div>
+<div id="gameArea">
+  <div id="header">
+    <h1>Portal 2D</h1>
+    <span id="levelInfo">Level 1 / 4</span>
+  </div>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="message"></div>
+  <div id="controls">
+    Arrow Keys: Move &amp; Jump &nbsp;|&nbsp; Left Click: Blue Portal &nbsp;|&nbsp; Right Click: Orange Portal &nbsp;|&nbsp; R: Reset Level
+  </div>
+</div>
+<div id="overlay">
+  <h2 id="overlayTitle"></h2>
+  <p id="overlayText"></p>
+  <div class="btn-row">
+    <button id="overlayBtn"></button>
+    <button id="overlaySelectBtn">Level Select</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const TILE = 40;
+const COLS = 20;
+const ROWS = 15;
+
+// Tile types
+const AIR = 0, WALL = 1, PORTALPROOF = 2, GROUND = 3, EXIT = 4,
+      BUTTON = 5, DOOR = 6, CEILING = 7;
+
+const COLORS = {
+  [WALL]: '#3a3a5c',
+  [PORTALPROOF]: '#2a2a3a',
+  [GROUND]: '#4a4a6a',
+  [CEILING]: '#3a3a5c',
+  [EXIT]: '#00ff88',
+  [BUTTON]: '#ffcc00',
+  [DOOR]: '#ff4444',
+};
+
+// Parse level string into grid
+function parseLevel(str) {
+  return str.trim().split('\n').map(row =>
+    row.trim().split('').map(c => {
+      switch(c) {
+        case 'W': return WALL;
+        case 'P': return PORTALPROOF;
+        case 'G': return GROUND;
+        case 'C': return CEILING;
+        case 'E': return EXIT;
+        case 'T': return BUTTON;
+        case 'D': return DOOR;
+        default: return AIR;
+      }
+    })
+  );
+}
+
+// Level definitions
+const levelDefs = [
+  // Level 1: Think With Portals
+  {
+    map: [
+      'WCCCCCCCCCCCCCCCCCCW',
+      'W..................W',
+      'W..................W',
+      'W..................W',
+      'W..................W',
+      'W..................W',
+      'W..................W',
+      'W..................W',
+      'W........P.........W',
+      'W........P.........W',
+      'W........P.........W',
+      'W........P.........W',
+      'W........P.........W',
+      'W........P......E.W',
+      'WGGGGGGGgpgggggggggw',
+    ],
+    // Fix: let me redo these properly as 20-char strings
+    playerStart: [1, 13],
+    boxes: [],
+    buttons: [],
+    movingPlatforms: [],
+    hint: "Place portals on opposite walls to teleport across the barrier.",
+  },
+  // Level 2: Special Delivery
+  {
+    playerStart: [1, 13],
+    boxes: [[4, 13]],
+    buttons: [{ pos: [9, 13], doorPos: [12, 13] }],
+    movingPlatforms: [],
+    hint: "Push the box onto the button to hold the door open. Jump over the box to get past it!",
+  },
+  // Level 3: Chain Reaction
+  {
+    playerStart: [1, 13],
+    boxes: [[4, 4]],
+    buttons: [{ pos: [12, 13], doorPos: [13, 6] }],
+    movingPlatforms: [{ col: 2, minRow: 4, maxRow: 10, speed: 0.02 }],
+    hint: "Ride the platform up, push the box down, then portal to the exit.",
+  },
+  // Level 4: Portal Express
+  {
+    playerStart: [1, 13],
+    boxes: [[4, 8]],
+    buttons: [{ pos: [9, 13], doorPos: [10, 8] }],
+    movingPlatforms: [{ col: 2, minRow: 6, maxRow: 12, speed: 0.02 }],
+    hint: "Ride up, push the box down to the button, then shoot a portal through the opening.",
+  },
+];
+
+// Build proper level grids
+function buildLevel1Grid() {
+  const g = [];
+  for (let r = 0; r < ROWS; r++) {
+    g[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      if (r === 0) g[r][c] = (c === 0 || c === COLS-1) ? WALL : CEILING;
+      else if (r === ROWS-1) g[r][c] = (c === 0 || c === COLS-1) ? WALL : GROUND;
+      else if (c === 0 || c === COLS-1) g[r][c] = WALL;
+      else if (c === 9 && r >= 8) g[r][c] = PORTALPROOF;
+      else g[r][c] = AIR;
+    }
+  }
+  g[13][17] = EXIT;
+  return g;
+}
+
+function buildLevel2Grid() {
+  const g = [];
+  for (let r = 0; r < ROWS; r++) {
+    g[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      if (r === 0) g[r][c] = (c === 0 || c === COLS-1) ? WALL : CEILING;
+      else if (r === ROWS-1) g[r][c] = (c === 0 || c === COLS-1) ? WALL : GROUND;
+      else if (c === 0 || c === COLS-1) g[r][c] = WALL;
+      else g[r][c] = AIR;
+    }
+  }
+  // Portal-proof wall at col 12, full height
+  for (let r = 0; r <= 13; r++) g[r][12] = PORTALPROOF;
+  // Door at ground level — only way through
+  g[13][12] = DOOR;
+  // Portal-proof ceiling on right side (prevents ceiling portal bypass)
+  for (let c = 13; c <= 18; c++) g[0][c] = PORTALPROOF;
+  // Button far enough from door that player can't step-and-run through
+  g[13][9] = BUTTON;
+  g[13][10] = WALL; // box stop
+  // Exit on the far side
+  g[13][17] = EXIT;
+  return g;
+}
+
+function buildLevel3Grid() {
+  const g = [];
+  for (let r = 0; r < ROWS; r++) {
+    g[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      if (r === 0) g[r][c] = (c === 0 || c === COLS-1) ? WALL : CEILING;
+      else if (r === ROWS-1) g[r][c] = (c === 0 || c === COLS-1) ? WALL : GROUND;
+      else if (c === 0 || c === COLS-1) g[r][c] = WALL;
+      else g[r][c] = AIR;
+    }
+  }
+  // Tall wall divider at col 13 — must extend to ground so player can't portal past it
+  for (let r = 1; r <= 13; r++) g[r][13] = WALL;
+  // Box shelf
+  g[5][3] = GROUND; g[5][4] = GROUND; g[5][5] = GROUND;
+  // Exit platform on right side
+  for (let c = 10; c <= 18; c++) g[7][c] = GROUND;
+  g[6][15] = EXIT;
+  // Door in the wall
+  g[6][13] = DOOR;
+  // Button on floor — next to wall so box can't overshoot
+  g[13][12] = BUTTON;
+  g[14][12] = GROUND;
+  return g;
+}
+
+function buildLevel4Grid() {
+  const g = [];
+  for (let r = 0; r < ROWS; r++) {
+    g[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      if (r === 0) g[r][c] = (c === 0 || c === COLS-1) ? WALL : CEILING;
+      else if (r === ROWS-1) g[r][c] = (c === 0 || c === COLS-1) ? WALL : GROUND;
+      else if (c === 0 || c === COLS-1) g[r][c] = WALL;
+      else g[r][c] = AIR;
+    }
+  }
+  // Wall divider at col 10, rows 1-13 (portal-able)
+  for (let r = 1; r <= 13; r++) g[r][10] = WALL;
+  // Door in wall at row 8 — opens when button pressed
+  g[8][10] = DOOR;
+  // Box shelf on left side (cols 3-5, row 9)
+  g[9][3] = GROUND; g[9][4] = GROUND; g[9][5] = GROUND;
+  // Exit platform on right side (cols 12-18, row 5)
+  for (let c = 12; c <= 18; c++) g[5][c] = GROUND;
+  // Exit on the platform
+  g[4][15] = EXIT;
+  // Button on left side ground, next to wall
+  g[13][9] = BUTTON;
+  return g;
+}
+
+const levelGridBuilders = [buildLevel1Grid, buildLevel2Grid, buildLevel3Grid, buildLevel4Grid];
+
+const levelNames = ['Think With Portals', 'Special Delivery', 'Chain Reaction', 'Portal Express'];
+let inGame = false;
+
+// Game state
+let currentLevel = 0;
+let grid = [];
+let player = { x: 0, y: 0, vx: 0, vy: 0, w: 0.6, h: 0.9, onGround: false };
+let boxes = [];
+let portals = { blue: null, orange: null }; // { x, y, face: 'left'|'right'|'top'|'bottom' }
+let doors = {}; // "col,row" -> open
+let movingPlatforms = [];
+let keys = {};
+let levelComplete = false;
+
+function isSolid(col, row) {
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return true;
+  const t = grid[row][col];
+  if (t === WALL || t === PORTALPROOF || t === GROUND || t === CEILING) return true;
+  if (t === DOOR) {
+    const key = col + ',' + row;
+    return !doors[key];
+  }
+  // BUTTON is NOT solid — it's a pressure plate entities walk over
+  return false;
+}
+
+function canPlacePortal(col, row) {
+  if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return false;
+  const t = grid[row][col];
+  return t === WALL || t === GROUND || t === CEILING;
+}
+
+function loadLevel(idx) {
+  currentLevel = idx;
+  const def = levelDefs[idx];
+  grid = levelGridBuilders[idx]();
+  player.x = def.playerStart[0] + 0.5;
+  player.y = def.playerStart[1] + 0.1;
+  player.vx = 0;
+  player.vy = 0;
+  player.onGround = false;
+  boxes = def.boxes.map(b => ({ x: b[0] + 0.5, y: b[1] + 0.2, w: 0.7, h: 0.7, vy: 0 }));
+  portals = { blue: null, orange: null };
+  doors = {};
+  levelComplete = false;
+
+  // Initialize doors as closed
+  def.buttons.forEach(b => {
+    const key = b.doorPos[0] + ',' + b.doorPos[1];
+    doors[key] = false;
+  });
+
+  // Moving platforms
+  movingPlatforms = def.movingPlatforms.map(mp => ({
+    col: mp.col,
+    minRow: mp.minRow,
+    maxRow: mp.maxRow,
+    speed: mp.speed,
+    currentRow: mp.maxRow,
+    direction: -1, // moving up
+  }));
+
+  document.getElementById('levelInfo').textContent = `Level ${idx + 1} / 4`;
+  document.getElementById('message').textContent = def.hint;
+}
+
+// Portal projectile raycasting
+function castPortalRay(startX, startY, targetX, targetY, color) {
+  const dx = targetX - startX;
+  const dy = targetY - startY;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 0.01) return;
+
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const step = 0.1;
+
+  let px = startX;
+  let py = startY;
+
+  for (let i = 0; i < 500; i++) {
+    px += nx * step;
+    py += ny * step;
+
+    const col = Math.floor(px);
+    const row = Math.floor(py);
+
+    if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+
+    if (isSolid(col, row)) {
+      // Check if we can place a portal here
+      if (!canPlacePortal(col, row)) return;
+
+      // Determine which face we hit
+      const prevX = px - nx * step;
+      const prevY = py - ny * step;
+      const prevCol = Math.floor(prevX);
+      const prevRow = Math.floor(prevY);
+
+      let face;
+      if (prevCol < col) face = 'left';
+      else if (prevCol > col) face = 'right';
+      else if (prevRow < row) face = 'top';
+      else if (prevRow > row) face = 'bottom';
+      else face = 'left'; // fallback
+
+      // Verify the face is adjacent to an air (non-solid) tile.
+      // Portals can only go on surfaces facing open space.
+      let adjCol = col, adjRow = row;
+      if (face === 'left') adjCol = col - 1;
+      else if (face === 'right') adjCol = col + 1;
+      else if (face === 'top') adjRow = row - 1;
+      else if (face === 'bottom') adjRow = row + 1;
+      if (adjCol < 0 || adjCol >= COLS || adjRow < 0 || adjRow >= ROWS) return;
+      if (isSolid(adjCol, adjRow)) return; // face is between two solid tiles, skip
+
+      const portal = { col, row, face };
+
+      // Don't place both portals on same tile+face
+      const other = color === 'blue' ? portals.orange : portals.blue;
+      if (other && other.col === col && other.row === row && other.face === face) return;
+
+      portals[color] = portal;
+      return;
+    }
+  }
+}
+
+// Check button states
+function updateButtons() {
+  const def = levelDefs[currentLevel];
+  def.buttons.forEach(btn => {
+    const bx = btn.pos[0];
+    const by = btn.pos[1];
+    const key = btn.doorPos[0] + ',' + btn.doorPos[1];
+
+    // Check if a box is on the button
+    let pressed = false;
+    for (const box of boxes) {
+      const boxCol = Math.floor(box.x);
+      const boxRow = Math.floor(box.y + 0.4);
+      if (boxCol === bx && boxRow === by) {
+        pressed = true;
+        break;
+      }
+    }
+    // Also check player
+    const pCol = Math.floor(player.x);
+    const pRow = Math.floor(player.y + 0.4);
+    if (pCol === bx && pRow === by) pressed = true;
+
+    doors[key] = pressed;
+  });
+}
+
+// Physics for an entity (player or box)
+function applyGravity(ent, dt) {
+  ent.vy += 30 * dt; // gravity
+  if (ent.vy > 15) ent.vy = 15;
+}
+
+function moveEntity(ent, dt) {
+  // Horizontal
+  const hw = ent.w / 2;
+  const hh = ent.h;
+
+  let newX = ent.x + ent.vx * dt;
+  // Check horizontal collision
+  const top = Math.floor(ent.y);
+  const bottom = Math.floor(ent.y + hh - 0.01);
+
+  if (ent.vx > 0) {
+    const col = Math.floor(newX + hw);
+    for (let r = top; r <= bottom; r++) {
+      if (isSolid(col, r)) {
+        newX = col - hw;
+        ent.vx = 0;
+        break;
+      }
+    }
+  } else if (ent.vx < 0) {
+    const col = Math.floor(newX - hw);
+    for (let r = top; r <= bottom; r++) {
+      if (isSolid(col, r)) {
+        newX = col + 1 + hw;
+        ent.vx = 0;
+        break;
+      }
+    }
+  }
+  ent.x = newX;
+
+  // Vertical
+  let newY = ent.y + ent.vy * dt;
+  ent.onGround = false;
+
+  if (ent.vy > 0) {
+    // Falling
+    const left = Math.floor(ent.x - hw + 0.05);
+    const right = Math.floor(ent.x + hw - 0.05);
+    const row = Math.floor(newY + hh);
+    for (let c = left; c <= right; c++) {
+      if (isSolid(c, row)) {
+        newY = row - hh;
+        ent.vy = 0;
+        ent.onGround = true;
+        break;
+      }
+    }
+    // Check moving platforms
+    if (!ent.onGround) {
+      for (const mp of movingPlatforms) {
+        const platY = mp.currentRow;
+        const platTop = platY;
+        if (ent.x - hw + 0.05 < mp.col + 1 && ent.x + hw - 0.05 > mp.col) {
+          if (newY + hh >= platTop && ent.y + hh <= platTop + 0.3) {
+            newY = platTop - hh;
+            ent.vy = 0;
+            ent.onGround = true;
+            ent._onPlatform = mp;
+            break;
+          }
+        }
+      }
+    }
+  } else if (ent.vy < 0) {
+    // Jumping up
+    const left = Math.floor(ent.x - hw + 0.05);
+    const right = Math.floor(ent.x + hw - 0.05);
+    const row = Math.floor(newY);
+    for (let c = left; c <= right; c++) {
+      if (isSolid(c, row)) {
+        newY = row + 1;
+        ent.vy = 0;
+        break;
+      }
+    }
+  }
+  ent.y = newY;
+}
+
+// Portal teleportation — uses ent._preVx / ent._preVy (saved before collision)
+function checkPortalEntry(ent) {
+  if (!portals.blue || !portals.orange) return;
+
+  const pairs = [
+    { enter: portals.blue, exit: portals.orange },
+    { enter: portals.orange, exit: portals.blue },
+  ];
+
+  const hw = ent.w / 2;
+  const hh = ent.h;
+  // Use pre-collision velocity (saved before moveEntity zeroes it on wall hit)
+  const pvx = ent._preVx || 0;
+  const pvy = ent._preVy || 0;
+
+  for (const { enter, exit } of pairs) {
+    let touching = false;
+    let movingToward = false;
+    const tol = 0.35;
+
+    switch (enter.face) {
+      case 'left': {
+        // Portal on left face of wall tile — open space is to the left
+        // Player approaches from left, moving RIGHT
+        const faceX = enter.col;
+        touching = Math.abs((ent.x + hw) - faceX) < tol &&
+                   ent.y + hh > enter.row + 0.1 && ent.y < enter.row + 0.9;
+        movingToward = pvx > 0.3;
+        break;
+      }
+      case 'right': {
+        // Portal on right face — open space is to the right
+        // Player approaches from right, moving LEFT
+        const faceX = enter.col + 1;
+        touching = Math.abs((ent.x - hw) - faceX) < tol &&
+                   ent.y + hh > enter.row + 0.1 && ent.y < enter.row + 0.9;
+        movingToward = pvx < -0.3;
+        break;
+      }
+      case 'top': {
+        // Portal on top face (floor) — entity falls DOWN into it
+        const faceY = enter.row;
+        touching = Math.abs((ent.y + hh) - faceY) < tol &&
+                   ent.x + hw > enter.col + 0.1 && ent.x - hw < enter.col + 0.9;
+        // Low threshold — walking over a floor portal should drop you through
+        movingToward = pvy > 0.3;
+        break;
+      }
+      case 'bottom': {
+        // Portal on bottom face (ceiling) — entity moves UP into it
+        const faceY = enter.row + 1;
+        touching = Math.abs(ent.y - faceY) < tol &&
+                   ent.x + hw > enter.col + 0.1 && ent.x - hw < enter.col + 0.9;
+        movingToward = pvy < -0.3;
+        break;
+      }
+    }
+
+    if (!touching || !movingToward) continue;
+
+    // Teleport to exit portal
+    const speed = Math.sqrt(pvx * pvx + pvy * pvy);
+    const exitSpeed = Math.max(speed, 5);
+
+    switch (exit.face) {
+      case 'left':
+        // Emerge to the left of exit wall
+        ent.x = exit.col - hw - 0.15;
+        ent.y = exit.row + 0.5 - hh / 2;
+        ent.vx = -exitSpeed;
+        ent.vy = -exitSpeed * 0.3; // slight upward arc
+        break;
+      case 'right':
+        // Emerge to the right of exit wall
+        ent.x = exit.col + 1 + hw + 0.15;
+        ent.y = exit.row + 0.5 - hh / 2;
+        ent.vx = exitSpeed;
+        ent.vy = -exitSpeed * 0.3; // slight upward arc
+        break;
+      case 'top':
+        // Emerge above exit wall
+        ent.x = exit.col + 0.5;
+        ent.y = exit.row - hh - 0.15;
+        ent.vx = 0;
+        ent.vy = -exitSpeed;
+        break;
+      case 'bottom':
+        // Emerge below exit wall
+        ent.x = exit.col + 0.5;
+        ent.y = exit.row + 1 + 0.15;
+        ent.vx = 0;
+        ent.vy = exitSpeed;
+        break;
+    }
+
+    // Clamp to playable area so entity doesn't fly off-screen
+    const ehw = ent.w / 2;
+    ent.x = Math.max(ehw + 0.1, Math.min(COLS - ehw - 0.1, ent.x));
+    ent.y = Math.max(0.1, Math.min(ROWS - ent.h - 0.1, ent.y));
+    ent._portalCooldown = 20;
+    return;
+  }
+}
+
+// Check exit
+function checkExit() {
+  const pCol = Math.floor(player.x);
+  const pRow = Math.floor(player.y + 0.4);
+  if (pRow >= 0 && pRow < ROWS && pCol >= 0 && pCol < COLS) {
+    if (grid[pRow][pCol] === EXIT) {
+      levelComplete = true;
+    }
+  }
+}
+
+// Box pushing
+function pushBoxes() {
+  const hw = player.w / 2;
+  const phh = player.h;
+
+  for (const box of boxes) {
+    const bhw = box.w / 2;
+    const bhh = box.h;
+
+    // Check overlap
+    if (player.x + hw > box.x - bhw && player.x - hw < box.x + bhw &&
+        player.y + phh > box.y && player.y < box.y + bhh) {
+      // Push horizontally
+      if (player.vx > 0 && player.x < box.x) {
+        const newBx = player.x + hw + bhw;
+        const bCol = Math.floor(newBx + bhw);
+        const bTop = Math.floor(box.y);
+        const bBot = Math.floor(box.y + bhh - 0.01);
+        let blocked = false;
+        for (let r = bTop; r <= bBot; r++) {
+          if (isSolid(bCol, r)) { blocked = true; break; }
+        }
+        if (!blocked) {
+          box.x = newBx;
+          box.vx = player.vx;
+        } else {
+          player.x = box.x - bhw - hw;
+          player.vx = 0;
+        }
+      } else if (player.vx < 0 && player.x > box.x) {
+        const newBx = player.x - hw - bhw;
+        const bCol = Math.floor(newBx - bhw);
+        const bTop = Math.floor(box.y);
+        const bBot = Math.floor(box.y + bhh - 0.01);
+        let blocked = false;
+        for (let r = bTop; r <= bBot; r++) {
+          if (isSolid(bCol, r)) { blocked = true; break; }
+        }
+        if (!blocked) {
+          box.x = newBx;
+          box.vx = player.vx;
+        } else {
+          player.x = box.x + bhw + hw;
+          player.vx = 0;
+        }
+      }
+    }
+  }
+}
+
+// Drawing
+function drawPortalOnFace(portal, color) {
+  const { col, row, face } = portal;
+  const x = col * TILE;
+  const y = row * TILE;
+  // Offset portal rendering into the air side so it doesn't appear inside the wall
+  const off = 3;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 5;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 15;
+
+  ctx.beginPath();
+  switch (face) {
+    case 'left':
+      // Portal faces left — draw on the left (air) side
+      ctx.moveTo(x - off, y + 4);
+      ctx.lineTo(x - off, y + TILE - 4);
+      break;
+    case 'right':
+      // Portal faces right — draw on the right (air) side
+      ctx.moveTo(x + TILE + off, y + 4);
+      ctx.lineTo(x + TILE + off, y + TILE - 4);
+      break;
+    case 'top':
+      // Portal faces up — draw on the top (air) side
+      ctx.moveTo(x + 4, y - off);
+      ctx.lineTo(x + TILE - 4, y - off);
+      break;
+    case 'bottom':
+      // Portal faces down — draw on the bottom (air) side
+      ctx.moveTo(x + 4, y + TILE + off);
+      ctx.lineTo(x + TILE - 4, y + TILE + off);
+      break;
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function draw() {
+  ctx.fillStyle = '#0e0e1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Draw grid
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const t = grid[r][c];
+      if (t === AIR) continue;
+
+      const x = c * TILE;
+      const y = r * TILE;
+
+      if (t === DOOR) {
+        const key = c + ',' + r;
+        if (doors[key]) {
+          // Open door - draw faint outline
+          ctx.strokeStyle = '#ff444433';
+          ctx.strokeRect(x + 1, y + 1, TILE - 2, TILE - 2);
+          continue;
+        }
+      }
+
+      if (t === BUTTON) {
+        // Draw as a thin pressure plate at the bottom of the tile (on the ground)
+        let pressed = false;
+        const def = levelDefs[currentLevel];
+        for (const btn of def.buttons) {
+          if (btn.pos[0] === c && btn.pos[1] === r) {
+            const dk = btn.doorPos[0] + ',' + btn.doorPos[1];
+            pressed = doors[dk];
+          }
+        }
+        ctx.fillStyle = pressed ? '#cc8800' : '#ffcc00';
+        ctx.fillRect(x + 4, y + TILE - 10, TILE - 8, 6);
+        // Small arrows to hint it's pressable
+        ctx.fillStyle = pressed ? '#aa6600' : '#ddaa00';
+        ctx.fillRect(x + 8, y + TILE - 8, TILE - 16, 4);
+        continue;
+      }
+
+      if (t === PORTALPROOF) {
+        ctx.fillStyle = '#2a2a3a';
+        ctx.fillRect(x, y, TILE, TILE);
+        // Diagonal stripes to indicate no portals
+        ctx.strokeStyle = '#44445588';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = -TILE; i < TILE * 2; i += 8) {
+          ctx.moveTo(x + i, y);
+          ctx.lineTo(x + i + TILE, y + TILE);
+        }
+        ctx.stroke();
+        continue;
+      }
+
+      if (t === EXIT) {
+        ctx.fillStyle = '#003322';
+        ctx.fillRect(x, y, TILE, TILE);
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 3, y + 3, TILE - 6, TILE - 6);
+        ctx.fillStyle = '#00ff88';
+        ctx.font = '12px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('EXIT', x + TILE/2, y + TILE/2 + 4);
+        continue;
+      }
+
+      ctx.fillStyle = COLORS[t] || '#555';
+      ctx.fillRect(x, y, TILE, TILE);
+
+      // Subtle border
+      ctx.strokeStyle = '#22223a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, TILE, TILE);
+    }
+  }
+
+  // Draw moving platforms
+  for (const mp of movingPlatforms) {
+    const x = mp.col * TILE;
+    const y = mp.currentRow * TILE;
+    ctx.fillStyle = '#7777cc';
+    ctx.fillRect(x, y, TILE, 8);
+    ctx.fillStyle = '#9999ee';
+    ctx.fillRect(x + 2, y, TILE - 4, 4);
+  }
+
+  // Draw boxes
+  for (const box of boxes) {
+    const bx = (box.x - box.w/2) * TILE;
+    const by = box.y * TILE;
+    ctx.fillStyle = '#aa7733';
+    ctx.fillRect(bx, by, box.w * TILE, box.h * TILE);
+    ctx.strokeStyle = '#886622';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, box.w * TILE, box.h * TILE);
+    // Cross on box
+    ctx.strokeStyle = '#665511';
+    ctx.beginPath();
+    ctx.moveTo(bx + 4, by + 4);
+    ctx.lineTo(bx + box.w * TILE - 4, by + box.h * TILE - 4);
+    ctx.moveTo(bx + box.w * TILE - 4, by + 4);
+    ctx.lineTo(bx + 4, by + box.h * TILE - 4);
+    ctx.stroke();
+  }
+
+  // Draw portals
+  if (portals.blue) drawPortalOnFace(portals.blue, '#00aaff');
+  if (portals.orange) drawPortalOnFace(portals.orange, '#ff8800');
+
+  // Draw player
+  const px = (player.x - player.w/2) * TILE;
+  const py = player.y * TILE;
+  const pw = player.w * TILE;
+  const ph = player.h * TILE;
+
+  // Body
+  ctx.fillStyle = '#e0e0e0';
+  ctx.fillRect(px + pw * 0.2, py + ph * 0.25, pw * 0.6, ph * 0.75);
+
+  // Head
+  ctx.fillStyle = '#e0e0e0';
+  ctx.beginPath();
+  ctx.arc(px + pw/2, py + ph * 0.18, pw * 0.25, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Eyes (visor)
+  ctx.fillStyle = '#00d4ff';
+  ctx.fillRect(px + pw * 0.28, py + ph * 0.12, pw * 0.44, ph * 0.08);
+
+  // Portal gun (small line from body)
+  ctx.strokeStyle = '#aaa';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(px + pw * 0.8, py + ph * 0.45);
+  ctx.lineTo(px + pw + 4, py + ph * 0.4);
+  ctx.stroke();
+}
+
+// Input
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === 'r' || e.key === 'R') loadLevel(currentLevel);
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('mousedown', e => {
+  if (levelComplete) return;
+  const rect = canvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) / rect.width * canvas.width / TILE;
+  const my = (e.clientY - rect.top) / rect.height * canvas.height / TILE;
+
+  const color = e.button === 0 ? 'blue' : (e.button === 2 ? 'orange' : null);
+  if (!color) return;
+
+  castPortalRay(player.x, player.y + player.h * 0.4, mx, my, color);
+});
+
+// Game loop
+let lastTime = 0;
+
+function update(dt) {
+  if (levelComplete) return;
+
+  // Player input
+  const moveSpeed = 5;
+  if (keys['ArrowLeft'] || keys['a']) {
+    player.vx = -moveSpeed;
+  } else if (keys['ArrowRight'] || keys['d']) {
+    player.vx = moveSpeed;
+  } else if (player.onGround) {
+    // Only apply friction on the ground — preserve momentum when airborne (portal launches)
+    player.vx *= 0.7;
+    if (Math.abs(player.vx) < 0.1) player.vx = 0;
+  }
+
+  if ((keys['ArrowUp'] || keys['w'] || keys[' ']) && player.onGround) {
+    player.vy = -11.5; // Jump velocity for ~3 tile height
+    player.onGround = false;
+  }
+
+  // Update moving platforms
+  for (const mp of movingPlatforms) {
+    mp.currentRow += mp.direction * mp.speed * dt * 60;
+    if (mp.currentRow <= mp.minRow) {
+      mp.currentRow = mp.minRow;
+      mp.direction = 1;
+    } else if (mp.currentRow >= mp.maxRow) {
+      mp.currentRow = mp.maxRow;
+      mp.direction = -1;
+    }
+  }
+
+  // Physics — save pre-collision velocity for portal entry checks
+  applyGravity(player, dt);
+  player._preVx = player.vx;
+  player._preVy = player.vy;
+  player._onPlatform = null;
+  moveEntity(player, dt);
+
+  // Box physics
+  for (const box of boxes) {
+    applyGravity(box, dt);
+    box.vx = (box.vx || 0) * 0.9;
+    box._preVx = box.vx || 0;
+    box._preVy = box.vy;
+    box._onPlatform = null;
+    moveEntity(box, dt);
+  }
+
+  // Box pushing
+  pushBoxes();
+
+  // Update box pre-velocity after push so portal entry detects it
+  for (const box of boxes) {
+    if (Math.abs(box.vx) > 0.3) {
+      box._preVx = box.vx;
+    }
+  }
+
+  // Portal cooldown and check
+  if (player._portalCooldown > 0) {
+    player._portalCooldown--;
+  } else {
+    checkPortalEntry(player);
+  }
+  for (const box of boxes) {
+    if (box._portalCooldown > 0) {
+      box._portalCooldown--;
+    } else {
+      checkPortalEntry(box);
+    }
+  }
+
+  // Buttons
+  updateButtons();
+
+  // Exit
+  checkExit();
+
+  if (levelComplete) {
+    showLevelComplete();
+  }
+}
+
+function showLevelSelect() {
+  inGame = false;
+  document.getElementById('overlay').classList.remove('active');
+  document.getElementById('gameArea').classList.remove('active');
+  const sel = document.getElementById('levelSelect');
+  sel.style.display = 'flex';
+  const grid = document.getElementById('levelGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < levelDefs.length; i++) {
+    const b = document.createElement('button');
+    b.innerHTML = `<span class="level-num">Level ${i + 1}</span><span class="level-name">${levelNames[i]}</span>`;
+    b.onclick = () => startLevel(i);
+    grid.appendChild(b);
+  }
+}
+
+function startLevel(idx) {
+  document.getElementById('levelSelect').style.display = 'none';
+  document.getElementById('gameArea').classList.add('active');
+  inGame = true;
+  loadLevel(idx);
+}
+
+function showLevelComplete() {
+  const overlay = document.getElementById('overlay');
+  const title = document.getElementById('overlayTitle');
+  const text = document.getElementById('overlayText');
+  const btn = document.getElementById('overlayBtn');
+  const selBtn = document.getElementById('overlaySelectBtn');
+
+  selBtn.onclick = () => {
+    overlay.classList.remove('active');
+    showLevelSelect();
+  };
+
+  if (currentLevel < 3) {
+    title.textContent = 'Level Complete!';
+    text.textContent = `You escaped room ${currentLevel + 1}. Ready for the next challenge?`;
+    btn.textContent = 'Next Level';
+    btn.onclick = () => {
+      overlay.classList.remove('active');
+      startLevel(currentLevel + 1);
+    };
+  } else {
+    title.textContent = 'You Escaped!';
+    text.textContent = 'Congratulations! You completed all 4 levels!';
+    btn.textContent = 'Play Again';
+    btn.onclick = () => {
+      overlay.classList.remove('active');
+      startLevel(0);
+    };
+  }
+  overlay.classList.add('active');
+}
+
+function gameLoop(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.05);
+  lastTime = time;
+
+  if (inGame) {
+    update(dt);
+    draw();
+  }
+  requestAnimationFrame(gameLoop);
+}
+
+// Start
+showLevelSelect();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
