@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calamity 2D</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="titleScreen" class="overlay">
+        <h1>CALAMITY 2D</h1>
+        <p class="subtitle">A Top-Down Musou Adventure</p>
+        <div class="controls-info">
+            <p><strong>WASD</strong> — Move</p>
+            <p><strong>Mouse</strong> — Aim</p>
+            <p><strong>Left Click</strong> — Attack (chain for combos)</p>
+            <p><strong>J</strong> — Spin Attack</p>
+            <p><strong>Space</strong> — Ultra Spin (powerful, has cooldown)</p>
+        </div>
+        <p class="start-prompt">Click to Continue</p>
+    </div>
+    <div id="levelSelect" class="overlay hidden">
+        <h1>CALAMITY 2D</h1>
+        <p class="subtitle">Select a Level</p>
+        <div class="level-grid" id="levelGrid"></div>
+        <p class="hint-text">Complete levels to unlock more!</p>
+        <button class="reset-btn" id="btnReset">Reset Progress</button>
+    </div>
+    <div id="victoryScreen" class="overlay hidden">
+        <h1>VICTORY!</h1>
+        <p class="subtitle">Level Complete</p>
+        <p id="finalStats"></p>
+        <div class="end-buttons">
+            <button class="overlay-btn" id="btnNextLevel">Next Level</button>
+            <button class="overlay-btn secondary" id="btnVictorySelect">Level Select</button>
+        </div>
+    </div>
+    <div id="gameOverScreen" class="overlay hidden">
+        <h1>DEFEATED</h1>
+        <p class="subtitle">The hero has fallen...</p>
+        <div class="end-buttons">
+            <button class="overlay-btn" id="btnRetry">Retry</button>
+            <button class="overlay-btn secondary" id="btnGameOverSelect">Level Select</button>
+        </div>
+    </div>
+    <script src="./game.js"></script>
+</body>
+</html>
