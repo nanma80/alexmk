@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paw Pals</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="app">
+    <div id="hud" class="hidden">
+        <div class="hud-pet">
+            <div id="hudName" class="pet-name">Kitty</div>
+            <div id="hudHearts" class="hearts"></div>
+        </div>
+        <div class="hud-bars">
+            <div class="stat" title="Food"><span class="stat-icon">🐟</span><div class="bar"><div class="fill" id="barFood"></div></div></div>
+            <div class="stat" title="Clean"><span class="stat-icon">🫧</span><div class="bar"><div class="fill" id="barClean"></div></div></div>
+            <div class="stat" title="Energy"><span class="stat-icon">⚡</span><div class="bar"><div class="fill" id="barEnergy"></div></div></div>
+            <div class="stat" title="Fun"><span class="stat-icon">🧶</span><div class="bar"><div class="fill" id="barFun"></div></div></div>
+        </div>
+        <div class="hud-right">
+            <div id="hudMood" class="mood" title="Happiness">😺</div>
+            <div class="coins" title="Coins">🪙 <span id="hudCoins">0</span></div>
+            <button id="btnSound" class="icon-btn" title="Sound on/off (M)">🔊</button>
+            <button id="btnSettings" class="icon-btn" title="Settings">⚙️</button>
+        </div>
+    </div>
+
+    <div id="stage">
+        <canvas id="room" width="960" height="540"></canvas>
+        <div id="hint" class="hidden"></div>
+
+        <div id="titleScreen" class="screen">
+            <div class="logo">Paw Pals <span>🐾</span></div>
+            <div class="title-cat">🐱</div>
+            <p class="tagline">Take care of your very own kitty!</p>
+            <div class="row">
+                <button id="btnContinue" class="big-btn hidden">Play with <span id="continueName"></span> ▶</button>
+                <button id="btnNew" class="big-btn secondary">Adopt a Kitty 🐾</button>
+            </div>
+            <p class="hint-text">Press <kbd>Enter</kbd> to start</p>
+        </div>
+
+        <div id="adoptScreen" class="screen hidden">
+            <div id="adoptStep1" class="step">
+                <h2>Pick your kitty!</h2>
+                <div id="kittenRow" class="kitten-row"></div>
+                <button id="btnPick" class="big-btn">This one! ▶</button>
+                <p class="hint-text"><kbd>←</kbd> <kbd>→</kbd> to look &nbsp; <kbd>Enter</kbd> to pick</p>
+            </div>
+            <div id="adoptStep2" class="step hidden">
+                <h2>What's your kitty's name?</h2>
+                <div class="row">
+                    <input id="catNameInput" maxlength="12" placeholder="Kitty name" autocomplete="off">
+                    <button id="btnRandomName" class="icon-btn big" title="Random name">🎲</button>
+                </div>
+                <div id="nameIdeas" class="chips"></div>
+                <label class="owner-label">Your name: <input id="ownerInput" maxlength="12" value="Alex" autocomplete="off"></label>
+                <div class="row">
+                    <button id="btnAdoptBack" class="big-btn secondary">◀ Back</button>
+                    <button id="btnAdoptGo" class="big-btn">Bring Home! 🏠</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="panel" class="panel hidden">
+            <div class="panel-head">
+                <h2 id="panelTitle"></h2>
+                <button id="btnPanelClose" class="icon-btn" title="Close (Esc)">✖</button>
+            </div>
+            <div id="panelTabs" class="tabs"></div>
+            <div id="panelMsg" class="panel-msg"></div>
+            <div id="panelBody" class="panel-body"></div>
+        </div>
+    </div>
+
+    <div id="actions" class="hidden"></div>
+</div>
+<script src="./game.js"></script>
+</body>
+</html>
