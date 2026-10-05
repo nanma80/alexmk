@@ -17,19 +17,19 @@ What makes Nintendogs-style games work for kids, and how Paw Pals applies it:
 
 | Principle | How Paw Pals does it |
 |---|---|
-| **Never punish** — no death, no game over | Stats only make the cat look sad / sleepy / dirty. Time away is capped (stats never drop below 25 while away; energy rises because the cat rests). |
+| **Never punish** — no death, no game over | Stats only make the cat look sad / sleepy / dirty. Time away is capped (stats never drop below 10 while away; energy rises because the cat rests). |
 | **Show feelings, don't explain them** | Face changes (happy eyes, blush, sad brows, droopy ears, sleepy lids), dirt smudges + stink lines, thought bubbles with an emoji of what it needs (🐟 💤 🛁 💩 🧶). |
 | **Minimal reading** | Every button is a big emoji + one word. The button for what the kitty needs most **wiggles with a yellow glow**. |
 | **Instant, juicy feedback** | Hearts, sparkles, confetti, purring, meows, coin pops on every good action. |
 | **Touch/pet the pet** | Rub the cat with the mouse (or hold P) → hearts + purr. Click the cat → it meows and says hi. |
-| **Long-term bond** | Affection grows slowly with care and never decays. 5 heart levels (Just Met → Soulmates) unlock harder tricks. |
+| **Long-term bond** | Affection grows slowly with care and fades only a little when the kitty is neglected or left alone. 5 heart levels (Just Met → Soulmates) unlock harder tricks; learned tricks are never lost. |
 | **Collecting & decorating** | Coins buy toys, furniture and outfits. Furniture appears in the room and the cat actually uses it. |
 | **Silly failures** | Failed trick lessons just make the cat tilt its head ("Huh? ❓"), so trying again is fun. |
 | **Come-back hooks (gentle)** | Daily gift (+15 coins), "I missed you!" greeting, treats that refill over time. |
 
 ---
 
-## Current State (v0.1)
+## Current State (v0.2)
 
 ### Flow
 1. **Title** — "Play with <name>" (if a save exists) or "Adopt a Kitty". Enter to start.
@@ -40,7 +40,9 @@ What makes Nintendogs-style games work for kids, and how Paw Pals applies it:
 - **Food 🐟**, **Clean 🫧**, **Energy ⚡**, **Fun 🧶** — shown as bars (green → yellow → pulsing red)
 - **Litter** — 0–4 poops in the box (each meal makes one poop ~40–80s later; the cat walks to the box to go)
 - **Happiness** — derived: average of the 4 stats (fun counts 1.5×) + litter cleanliness + up to +10 for furniture. Shown as a mood face (😻 😺 🐱 😿).
-- **Affection ❤️** — 0–100, never decays. Hearts: 0 / 8 / 22 / 40 / 65 / 90 → Just Met, Buddies, Good Pals, Close Friends, Best Friends, Soulmates. Each new heart level gives a banner, confetti and 10×level coins.
+- **Affection ❤️** — 0–100. Hearts: 0 / 8 / 22 / 40 / 65 / 90 → Just Met, Buddies, Good Pals, Close Friends, Best Friends, Soulmates. Reaching a heart level for the first time gives a banner, confetti and 10×level coins (`bestHeart` tracks this so it can't be farmed).
+  - **Affection can drop a little:** −1 per minute while happiness < 35, and −1 per 30 min away (after the first 30 min, at most −8). Losing a heart → "I feel a little lonely... 💔"; winning it back → "I feel loved again! 💕" (no coins).
+  - Tricks already learned stay usable even if hearts drop below the requirement.
 
 Decay while playing (points per second): food 1/30, clean 1/60, energy 1/35 (not while sleeping), fun 1/25.
 
@@ -86,7 +88,7 @@ Wanders around, grooms, meows, uses owned furniture/toys, walks to the litter bo
 Wall with polka dots, a window showing **day (sun + clouds) or night (moon + stars) based on the real clock**, wooden floor, food & water bowls, litter box. Purchased items appear at fixed spots. Objects are depth-sorted by y so the cat walks in front of/behind things correctly.
 
 ### Saving
-`localStorage` key `paw-pals-save`, saved every 5s, on purchase, and when the tab is hidden/closed. Time away (capped at 8 hours) lowers food/fun/clean (never below 25), raises energy, adds up to 3 poops and refills treats. Settings (⚙️) can rename the cat/owner or adopt a different kitty.
+`localStorage` key `paw-pals-save`, saved every 5s, on purchase, and when the tab is hidden/closed. Time away (capped at 8 hours) lowers food/fun (−0.5/min) and clean (−0.2/min), never below 10; raises energy; lowers affection a little; adds up to 3 poops and refills treats. If a heart was lost while away the kitty greets you with "I was lonely 💔 Pet me?". Settings (⚙️) can rename the cat/owner or adopt a different kitty.
 
 ### Audio
 All sounds are synthesized with the Web Audio API: meow (sawtooth + sweeping bandpass), purr (low saw with 24 Hz tremolo), coin, sparkle, nom, boing, splash, scrub, pour, nope, ta-da.
@@ -116,6 +118,11 @@ All sounds are synthesized with the Web Audio API: meow (sawtooth + sweeping ban
 ---
 
 ## Changelog
+
+### v0.2 — A bit more consequence
+- Time-away stat floor lowered from 25 to 10
+- Affection can now decrease (neglect while playing, time away); lost hearts can be won back
+- Level-up coins only for first-time heart levels; learned tricks never relock
 
 ### v0.1 — First playable
 - Title, adopt (5 kittens, naming), home room

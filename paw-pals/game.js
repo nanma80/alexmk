@@ -253,7 +253,7 @@ function newState(owner, catName, fur) {
         owned: ['yarn'], wear: { neck: null, head: null },
         tricks: { sit: 0, highfive: 0, spin: 0, jump: 0, rollover: 0 },
         treats: TREAT_MAX, treatTimer: 0,
-        lastSave: Date.now(), lastDay: todayStr(), adopted: Date.now(),
+        lastSave: Date.now(), lastDay: todayStr(), adopted: Date.now(), bestHeart: 0,
     };
 }
 
@@ -268,30 +268,36 @@ function load() {
     try { s = JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; }
     if (!s || !s.catName) return null;
     const d = newState(s.owner, s.catName, s.fur);
-    return Object.assign(d, s, {
+    const loaded = Object.assign(d, s, {
         stats: Object.assign(d.stats, s.stats),
         tricks: Object.assign(d.tricks, s.tricks),
         wear: Object.assign(d.wear, s.wear),
     });
+    loaded.bestHeart = Math.max(loaded.bestHeart, levelFor(loaded.affection));
+    return loaded;
 }
 
-// Time away: the kitty gets a bit hungry and bored, but never drops below 25.
+// Time away: the kitty gets hungry, bored and a little lonely, but stats never drop below 10.
+const AWAY_FLOOR = 10;
 function applyTimeAway(s) {
     const mins = Math.min(8 * 60, (Date.now() - s.lastSave) / 60000);
     if (mins < 1) return 0;
-    const lower = (v, loss) => v <= 25 ? v : Math.max(25, v - loss);
+    const lower = (v, loss) => v <= AWAY_FLOOR ? v : Math.max(AWAY_FLOOR, v - loss);
     s.stats.food = lower(s.stats.food, mins * 0.5);
     s.stats.fun = lower(s.stats.fun, mins * 0.5);
     s.stats.clean = lower(s.stats.clean, mins * 0.2);
     s.stats.energy = Math.max(s.stats.energy, Math.min(90, s.stats.energy + mins * 2));
     s.poops = Math.min(3, s.poops + Math.floor(mins / 45));
+    // Lonely: -1 affection per 30 min away (after the first half hour), at most -8
+    s.affection = Math.max(0, s.affection - Math.min(8, Math.max(0, mins - 30) / 30));
     if (mins >= 5) { s.treats = TREAT_MAX; s.treatTimer = 0; }
     return mins;
 }
 
 // ---------- Derived values ----------
 const owns = id => state && state.owned.includes(id);
-const heartLevel = () => { let l = 0; BONDS.forEach((b, i) => { if (state.affection >= b.min) l = i; }); return l; };
+const levelFor = aff => { let l = 0; BONDS.forEach((b, i) => { if (aff >= b.min) l = i; }); return l; };
+const heartLevel = () => levelFor(state.affection);
 const furnitureCount = () => state.owned.filter(id => itemById(id).furniture).length;
 const dirtLevel = () => state.stats.clean < 20 ? 3 : state.stats.clean < 35 ? 2 : state.stats.clean < 50 ? 1 : 0;
 const ownedToys = () => ITEMS.filter(i => i.tab === 'toys' && owns(i.id));
@@ -322,12 +328,20 @@ function addAffection(n) {
     const before = heartLevel();
     state.affection = clamp(state.affection + n, 0, 100);
     const after = heartLevel();
-    if (after > before) {
+    if (after > state.bestHeart) {
+        state.bestHeart = after;
         showBanner(`${state.catName} loves you more! ❤️`, `You are now ${BONDS[after].name}`);
         SFX.tada();
         confetti(40);
-        state.coins += 10 * after;
         meow(1.2);
+        state.coins += 10 * after;
+    } else if (after > before) {
+        // Won back a heart that was lost: smaller celebration, no coins
+        catSay('I feel loved again! 💕');
+        hearts(3);
+    } else if (after < before) {
+        catSay('I feel a little lonely... 💔', 3);
+        meow(0.8);
     }
 }
 
@@ -1454,7 +1468,7 @@ function wakeUp(quiet) {
 
 function doTrick(id) {
     const tr = TRICKS.find(t => t.id === id);
-    if (heartLevel() < tr.hearts) {
+    if (heartLevel() < tr.hearts && state.tricks[id] < TRICK_STARS) {
         SFX.nope();
         setPanelMsg(`${state.catName} needs to love you more first! ${'❤️'.repeat(tr.hearts)}`);
         return;
@@ -1763,7 +1777,7 @@ function renderPanel() {
         html = '<div class="grid">' + TRICKS.map((tr, n) => {
             const stars = state.tricks[tr.id];
             const learned = stars >= TRICK_STARS;
-            const locked = lvl < tr.hearts;
+            const locked = lvl < tr.hearts && !learned;
             const starLine = `<span class="stars">${'★'.repeat(stars)}${'☆'.repeat(TRICK_STARS - stars)}</span>`;
             const sub = locked ? `🔒 ${'❤️'.repeat(tr.hearts)}` : learned ? `${starLine}<br>Show off!` : `${starLine}<br>Teach`;
             return card('trick', tr.id, tr.icon, tr.name, sub, locked ? 'locked' : learned ? 'owned' : '', n);
@@ -1928,6 +1942,9 @@ function update(dt) {
         if (state.treatTimer >= TREAT_REFILL) { state.treatTimer = 0; state.treats++; }
     }
 
+    // A very unhappy kitty slowly loses affection (-1 per minute)
+    if (happiness() < 35) addAffection(-dt / 60);
+
     // A happy kitty earns a coin every 30 seconds
     if (happiness() >= 70) {
         timers.happy += dt;
@@ -2032,7 +2049,7 @@ function adoptGo() {
     startHome(0, true);
 }
 
-function startHome(minsAway, isNew) {
+function startHome(minsAway, isNew, lostHeart) {
     showScreen('home');
     activity = null;
     bowlFull = false;
@@ -2043,6 +2060,9 @@ function startHome(minsAway, isNew) {
         showBanner(`Welcome home, ${state.catName}!`, `Take good care of your kitty, ${state.owner} 💕`, 3.5);
         meow(1.2);
         setTimeout(() => showHint('Tip: rub your kitty with the mouse to pet! 💕 (or hold P)', 6), 4500);
+    } else if (lostHeart) {
+        catSay(`${state.owner}... I was lonely 💔 Pet me?`, 3.5);
+        meow(0.8);
     } else if (minsAway >= 10) {
         catSay(`${state.owner}! I missed you! 💕`, 3);
         meow(1.1);
@@ -2058,8 +2078,9 @@ function startHome(minsAway, isNew) {
 
 function continueGame() {
     ensureAudio();
+    const before = heartLevel();
     const mins = applyTimeAway(state);
-    startHome(mins, false);
+    startHome(mins, false, heartLevel() < before);
 }
 
 // =====================================================
