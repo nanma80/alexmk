@@ -2,11 +2,21 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Paw Pals">
+    <meta name="theme-color" content="#FFE0EC">
     <title>Paw Pals</title>
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+<div id="rotateScreen">
+    <div class="rotate-icon">📱</div>
+    <h2>Turn your phone sideways!</h2>
+    <p>Paw Pals plays best in landscape 🐾</p>
+</div>
 <div id="app">
     <div id="hud" class="hidden">
         <div class="hud-pet">
@@ -30,6 +40,17 @@
     <div id="stage">
         <canvas id="room" width="960" height="540"></canvas>
         <div id="hint" class="hidden"></div>
+        <div id="walkPad" class="walk-pad hidden">
+            <div class="pad-dirs">
+                <button class="pad-btn" data-key="arrowleft" aria-label="Walk left">◀</button>
+                <div class="pad-col">
+                    <button class="pad-btn small" data-key="arrowup" aria-label="Move up">▲</button>
+                    <button class="pad-btn small" data-key="arrowdown" aria-label="Move down">▼</button>
+                </div>
+                <button class="pad-btn" data-key="arrowright" aria-label="Walk right">▶</button>
+            </div>
+            <button id="padAct" class="pad-btn pad-act" aria-label="Sniff, pounce or dig">🐾</button>
+        </div>
 
         <div id="titleScreen" class="screen">
             <div class="logo">Paw Pals <span>🐾</span></div>
@@ -39,7 +60,7 @@
                 <button id="btnContinue" class="big-btn hidden">Play with <span id="continueName"></span> ▶</button>
                 <button id="btnNew" class="big-btn secondary">Adopt a Kitty 🐾</button>
             </div>
-            <p class="hint-text">Press <kbd>Enter</kbd> to start</p>
+            <p class="hint-text kbd-only">Press <kbd>Enter</kbd> to start</p>
         </div>
 
         <div id="adoptScreen" class="screen hidden">
@@ -47,7 +68,8 @@
                 <h2>Pick your kitty!</h2>
                 <div id="kittenRow" class="kitten-row"></div>
                 <button id="btnPick" class="big-btn">This one! ▶</button>
-                <p class="hint-text"><kbd>←</kbd> <kbd>→</kbd> to look &nbsp; <kbd>Enter</kbd> to pick</p>
+                <p class="hint-text kbd-only"><kbd>←</kbd> <kbd>→</kbd> to look &nbsp; <kbd>Enter</kbd> to pick</p>
+                <p class="hint-text touch-only">Tap a kitty to look, tap again to pick</p>
             </div>
             <div id="adoptStep2" class="step hidden">
                 <h2>What's your kitty's name?</h2>

@@ -29,7 +29,7 @@ What makes Nintendogs-style games work for kids, and how Paw Pals applies it:
 
 ---
 
-## Current State (v0.3)
+## Current State (v0.4)
 
 ### Flow
 1. **Title** — "Play with <name>" (if a save exists) or "Adopt a Kitty". Enter to start.
@@ -107,6 +107,15 @@ Wanders around, grooms, meows, uses owned furniture/toys, walks to the litter bo
 ### Room
 Wall with polka dots, a window showing **day (sun + clouds) or night (moon + stars) based on the real clock**, wooden floor, food & water bowls, litter box. Purchased items appear at fixed spots. Objects are depth-sorted by y so the cat walks in front of/behind things correctly.
 
+### iPad, Phones & Touch
+- **Touch mode** turns on automatically on touch screens (`pointer: coarse`, or the first touch). Keyboard hints, key numbers and `kbd` tips are hidden; hints switch to finger wording ("Drag the toy with your finger!").
+- **Touch controls:** tap action buttons; rub the cat to pet; drag the toy in Play; rub to scrub in Wash; tap poops to scoop.
+- **Walk on touch:** on-screen ◀ ▲ ▼ ▶ pad (bottom-left) + big 🐾 button (bottom-right). You can also tap the path to walk there, hold and drag to keep the cat following your finger, or tap a flower/butterfly/treasure to go to it. The prompt says "🐾 TAP".
+- **iPad** (landscape or portrait): the normal layout fits (stage up to 960 px wide, uses `dvh` so Safari's toolbars are accounted for).
+- **Phones in landscape** (screen height ≤ 540 px): compact layout with a small HUD on top, the stage on the left, and the action buttons in a 2×5 column on the right. Smaller fonts and cards everywhere; text drawn on the canvas (speech bubbles, labels, banners, prompts) is scaled up (`UIK`, up to 1.6×) so it stays readable.
+- **Phones held upright** (portrait, width ≤ 700 px): a "Turn your phone sideways!" screen covers the game and the game **pauses** (stats don't drop) until the phone is rotated. On Android, tapping Play/Adopt also tries fullscreen + landscape lock (iPhone Safari doesn't allow it, so the rotate screen handles it).
+- **iOS details:** no double-tap zoom or pinch, no long-press callout/selection on the canvas, safe-area padding for notches, `navigator.audioSession = 'playback'` so sounds play even with the silent switch on (Safari 17+), audio is unlocked on the first tap. "Add to Home Screen" launches it fullscreen like an app.
+
 ### Saving
 `localStorage` key `paw-pals-save`, saved every 5s, on purchase, and when the tab is hidden/closed. Time away (capped at 8 hours) lowers food/fun (−0.5/min) and clean (−0.2/min), never below 10; raises energy; lowers affection a little; adds up to 3 poops and refills treats. If a heart was lost while away the kitty greets you with "I was lonely 💔 Pet me?". Settings (⚙️) can rename the cat/owner or adopt a different kitty.
 
@@ -140,6 +149,12 @@ All sounds are synthesized with the Web Audio API: meow (sawtooth + sweeping ban
 ---
 
 ## Changelog
+
+### v0.4 — iPad & phone friendly
+- Touch mode with finger-friendly hints; on-screen walk pad + 🐾 button; tap/drag to walk
+- Compact landscape layout for phones (buttons on the side), scaled-up canvas text
+- Portrait phones get a "turn sideways" screen and the game pauses
+- iOS fixes: no zoom/callouts, safe areas, audio with the silent switch, home-screen app mode
 
 ### v0.3 — Outdoor walks
 - New **Walk 🌳** action (key 4; Dress Up moved to key 0): side-scrolling walk to the park with Alex holding the leash

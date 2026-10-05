@@ -38,6 +38,17 @@ function rrect(c, x, y, w, h, r) {
     c.closePath();
 }
 
+// ---------- Touch devices (iPad / phones) ----------
+let isTouch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 1;
+const portraitPhone = window.matchMedia('(orientation: portrait) and (max-width: 700px)');
+const T = (keyboardText, touchText) => isTouch ? touchText : keyboardText;
+let UIK = 1;   // extra scale for in-canvas text when the canvas is shown small (phones)
+
+function setTouch(on) {
+    isTouch = on;
+    document.body.classList.toggle('touch', on);
+}
+
 // ---------- Game data ----------
 const FURS = {
     orange: { label: 'Orange Tabby', base: '#F5A54A', dark: '#D9822B', belly: '#FFE8C8', eye: '#6CC36A', line: '#5A3A22', stripes: true },
@@ -129,6 +140,9 @@ const AudioCtx = window.AudioContext || window.webkitAudioContext;
 let audioCtx = null, noiseBuf = null, muted = false, lastPurr = 0;
 
 function ensureAudio() {
+    if (navigator.audioSession && navigator.audioSession.type !== 'playback') {
+        try { navigator.audioSession.type = 'playback'; } catch (e) { /* not supported */ }
+    }
     if (!audioCtx && AudioCtx) audioCtx = new AudioCtx();
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
 }
@@ -1017,19 +1031,22 @@ function drawTub(front, a) {
 
 function drawSpeech() {
     const h = catHead();
+    const k = UIK;
     if (cat.say) {
-        ctx.font = 'bold 20px "Trebuchet MS", sans-serif';
-        const w = ctx.measureText(cat.say.text).width + 28;
-        const bx = clamp(h.x - w / 2, 8, W - w - 8), by = h.y - 78;
+        ctx.font = `bold ${Math.round(20 * k)}px "Trebuchet MS", sans-serif`;
+        const w = ctx.measureText(cat.say.text).width + 28 * k, bh = 40 * k;
+        const bx = clamp(h.x - w / 2, 8, W - w - 8), by = Math.max(4, h.y - 38 - bh);
         ctx.globalAlpha = clamp(cat.say.t * 4, 0, 1);
         ctx.fillStyle = '#fff';
-        rrect(ctx, bx, by, w, 40, 14); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(h.x - 8, by + 39); ctx.lineTo(h.x + 8, by + 39); ctx.lineTo(h.x, by + 52); ctx.closePath(); ctx.fill();
+        rrect(ctx, bx, by, w, bh, 14 * k); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(h.x - 8 * k, by + bh - 1); ctx.lineTo(h.x + 8 * k, by + bh - 1); ctx.lineTo(h.x, by + bh + 12 * k); ctx.closePath(); ctx.fill();
         ctx.fillStyle = '#5A3E36'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(cat.say.text, bx + w / 2, by + 21);
+        ctx.fillText(cat.say.text, bx + w / 2, by + bh / 2 + 1);
         ctx.textBaseline = 'alphabetic';
         ctx.globalAlpha = 1;
     } else if (cat.thought) {
+        ctx.save();
+        ctx.translate(h.x, h.y); ctx.scale(k, k); ctx.translate(-h.x, -h.y);
         const bx = h.x + 40, by = h.y - 60;
         ctx.globalAlpha = clamp(cat.thought.t * 3, 0, 1);
         ell(ctx, h.x + 16, h.y - 18, 4, 4, '#fff');
@@ -1041,6 +1058,7 @@ function drawSpeech() {
         ctx.fillText(cat.thought.icon, bx, by + 2 + Math.sin(time * 4) * 2);
         ctx.textBaseline = 'alphabetic';
         ctx.globalAlpha = 1;
+        ctx.restore();
     }
 }
 
@@ -1058,11 +1076,11 @@ function drawParts() {
         } else if (p.type === 'drop') {
             ell(ctx, p.x, p.y, 3, 5, p.dropColor || '#64B5F6');
         } else if (p.type === 'label') {
-            ctx.font = `bold ${p.size}px "Trebuchet MS", sans-serif`; ctx.textAlign = 'center';
+            ctx.font = `bold ${Math.round(p.size * UIK)}px "Trebuchet MS", sans-serif`; ctx.textAlign = 'center';
             ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.strokeText(p.text, p.x, p.y);
             ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, p.y);
         } else {
-            ctx.font = `${p.size}px serif`; ctx.textAlign = 'center';
+            ctx.font = `${Math.round(p.size * UIK)}px serif`; ctx.textAlign = 'center';
             ctx.fillText(p.text, p.x, p.y);
         }
     }
@@ -1075,7 +1093,8 @@ function drawBanner() {
     ctx.save();
     ctx.globalAlpha = clamp(k, 0, 1);
     ctx.translate(W / 2, 120);
-    ctx.scale(0.8 + 0.2 * clamp(k, 0, 1), 0.8 + 0.2 * clamp(k, 0, 1));
+    const z = (0.8 + 0.2 * clamp(k, 0, 1)) * Math.min(UIK, 1.3);
+    ctx.scale(z, z);
     ctx.font = 'bold 36px "Trebuchet MS", sans-serif';
     const w = Math.max(ctx.measureText(banner.text).width, 300) + 60;
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
@@ -1471,12 +1490,12 @@ function startPlay(toyId) {
         type: 'play', toy: toyId, t: 15, cd: 0.6, pounces: 0, pounceT: 0, jumpH: 30,
         tx: clamp(cat.x + 140 * (cat.x < 480 ? 1 : -1), 80, 880), ty: cat.y,
     });
-    showHint('Move the toy with the mouse or arrow keys! 🐾');
+    showHint(T('Move the toy with the mouse or arrow keys! 🐾', 'Drag the toy with your finger! 🐾'));
 }
 
 function actWash() {
     startActivity({ type: 'wash', progress: 0, phase: 'scrub', t: 0, scrubSfx: 0 }, SPOT.wash);
-    showHint('Scrub-a-dub! Rub the kitty with the mouse or tap SPACE 🫧');
+    showHint(T('Scrub-a-dub! Rub the kitty with the mouse or tap SPACE 🫧', 'Scrub-a-dub! Rub the kitty with your finger 🫧'));
 }
 
 function actLitter() {
@@ -1752,7 +1771,7 @@ function openPanel(id) {
     renderPanel();
     const first = $('panelBody').querySelector('button');
     if (first) first.focus();
-    if (SIDE_PANELS.includes(id) && !activity) { stopUsing(); cat.timer = 0; }
+    if (SIDE_PANELS.includes(id) && !activity) { stopUsing(); goTo(SPOT.pose, () => { cat.facing = 1; }); }
 }
 
 function closePanel() {
@@ -1970,7 +1989,7 @@ function actWalk() {
         cat.say = null;
         cat.facing = 1;
         state.walkNeed = 0;
-        showHint('← → walk · ↑ ↓ dodge puddles · SPACE to sniff, pounce & dig! 🐾', 7);
+        showHint(T('← → walk · ↑ ↓ dodge puddles · SPACE to sniff, pounce & dig! 🐾', 'Tap the path to walk · tap 🐾 to sniff, pounce & dig!'), 7);
     });
 }
 
@@ -2259,9 +2278,40 @@ function handleWalkClick(p) {
     if (target) {
         if (inRange(target)) walkInteract(target);
         else w.goal = { x: target.x - Math.sign(target.x - w.cx) * 30, y: clamp(target.y, PATH.top + 8, PATH.bottom), obj: target };
-        return;
+        return true;
     }
     w.goal = { x: wx, y: clamp(p.y, PATH.top + 8, PATH.bottom) };
+    return false;
+}
+
+// Holding a finger (or mouse button) on the path keeps the cat following it
+function dragWalkGoal(p) {
+    const w = walk;
+    if (!w || fade || w.done || w.leaving) return;
+    w.goal = { x: p.x + w.camX, y: clamp(p.y, PATH.top + 8, PATH.bottom) };
+}
+
+// On-screen walk buttons for touch screens
+function setupWalkPad() {
+    document.querySelectorAll('#walkPad [data-key]').forEach(b => {
+        const k = b.dataset.key;
+        const up = () => { keys[k] = false; b.classList.remove('on'); };
+        b.addEventListener('pointerdown', e => {
+            e.preventDefault();
+            ensureAudio();
+            b.setPointerCapture(e.pointerId);
+            keys[k] = true;
+            b.classList.add('on');
+        });
+        b.addEventListener('pointerup', up);
+        b.addEventListener('pointercancel', up);
+        b.addEventListener('lostpointercapture', up);
+    });
+    $('padAct').addEventListener('pointerdown', e => {
+        e.preventDefault();
+        ensureAudio();
+        if (scene === 'walk') walkInteract(nearestInteractable());
+    });
 }
 
 function walkCatView() {
@@ -2474,10 +2524,13 @@ function renderWalk() {
         const o = nearestInteractable();
         if (o) {
             const bx = o.x - cam, by = (o.type === 'butterfly' ? o.y - 30 : o.type === 'friend' ? o.y - 125 : o.y - 45) + Math.sin(time * 5) * 3;
+            ctx.save();
+            ctx.translate(bx, by); ctx.scale(UIK, UIK);
             ctx.fillStyle = 'rgba(255,255,255,0.95)';
-            rrect(ctx, bx - 42, by - 18, 84, 26, 10); ctx.fill();
+            rrect(ctx, -42, -18, 84, 26, 10); ctx.fill();
             ctx.fillStyle = '#FF6F9C'; ctx.font = 'bold 15px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText('🐾 SPACE', bx, by);
+            ctx.fillText(T('🐾 SPACE', '🐾 TAP'), 0, 0);
+            ctx.restore();
         }
     }
 }
@@ -2532,6 +2585,7 @@ function updateHUD() {
     document.querySelectorAll('.act').forEach(b => b.classList.toggle('nudge', !!need && b.dataset.id === need.action));
     const walking = scene === 'walk';
     document.querySelectorAll('.act').forEach(b => b.classList.toggle('dim', walking && b.dataset.id !== 'walk'));
+    $('walkPad').classList.toggle('hidden', !(walking && isTouch && !fade));
     const wb = document.querySelector('.act[data-id="walk"]');
     wb.querySelector('.emoji').textContent = walking ? '🏠' : '🌳';
     wb.querySelector('.label').textContent = walking ? 'Home' : 'Walk';
@@ -2598,6 +2652,7 @@ let adoptIdx = 0;
 
 function showScreen(id) {
     screen = id;
+    document.body.classList.toggle('home', id === 'home');
     $('titleScreen').classList.toggle('hidden', id !== 'title');
     $('adoptScreen').classList.toggle('hidden', id !== 'adopt');
     $('hud').classList.toggle('hidden', id !== 'home');
@@ -2660,7 +2715,7 @@ function adoptNext() {
     const ideas = [...NAME_IDEAS].sort(() => Math.random() - 0.5).slice(0, 8);
     $('nameIdeas').innerHTML = ideas.map(n => `<button class="chip">${n}</button>`).join('');
     $('catNameInput').value = '';
-    $('catNameInput').focus();
+    if (!isTouch) $('catNameInput').focus();
 }
 
 function adoptGo() {
@@ -2686,7 +2741,7 @@ function startHome(minsAway, isNew, lostHeart) {
     if (isNew) {
         showBanner(`Welcome home, ${state.catName}!`, `Take good care of your kitty, ${state.owner} 💕`, 3.5);
         meow(1.2);
-        setTimeout(() => showHint('Tip: rub your kitty with the mouse to pet! 💕 (or hold P)', 6), 4500);
+        setTimeout(() => showHint(T('Tip: rub your kitty with the mouse to pet! 💕 (or hold P)', 'Tip: rub your kitty with your finger to pet! 💕'), 6), 4500);
     } else if (lostHeart) {
         catSay(`${state.owner}... I was lonely 💔 Pet me?`, 3.5);
         meow(0.8);
@@ -2725,9 +2780,12 @@ function overCat(x, y) {
     return Math.abs(x - v.x) < 42 * v.s && y > top && y < v.y + 5;
 }
 
+let walkDrag = false;
+
 canvas.addEventListener('pointermove', e => {
-    if (screen !== 'home' || scene === 'walk') return;
+    if (screen !== 'home') return;
     const p = canvasPos(e);
+    if (scene === 'walk') { if (walkDrag && e.buttons) dragWalkGoal(p); return; }
     const moved = mouse.over ? dist(mouse.x, mouse.y, p.x, p.y) : 0;
     mouse.x = p.x; mouse.y = p.y; mouse.over = true;
     const a = activity;
@@ -2739,14 +2797,20 @@ canvas.addEventListener('pointermove', e => {
 });
 
 canvas.addEventListener('pointerleave', () => { mouse.over = false; });
+canvas.addEventListener('pointerup', () => { walkDrag = false; });
+canvas.addEventListener('pointercancel', () => { walkDrag = false; mouse.over = false; });
 
 canvas.addEventListener('pointerdown', e => {
     if (screen !== 'home') return;
     ensureAudio();
     const p = canvasPos(e);
-    if (scene === 'walk') { handleWalkClick(p); return; }
+    if (e.pointerType === 'touch' && !isTouch) setTouch(true);
+    if (scene === 'walk') { walkDrag = !handleWalkClick(p); return; }
+    // A finger "arrives" at the touch point (no hover), so start petting/scrubbing from here
+    mouse.x = p.x; mouse.y = p.y; mouse.over = true;
     const a = activity;
-    if (a && (a.type === 'play' || a.type === 'wash')) { if (a.type === 'wash' && overCat(p.x, p.y)) scrub(5); return; }
+    if (a && a.type === 'play') { a.tx = p.x; a.ty = p.y; return; }
+    if (a && a.type === 'wash') { if (overCat(p.x, p.y)) scrub(5); return; }
     for (let i = state.poops - 1; i >= 0; i--) {
         const pp = poopPos(i);
         if (dist(p.x, p.y, pp.x, pp.y - 4) < 16 && (!a || a.type === 'sleep')) {
@@ -2839,10 +2903,20 @@ function toggleMute() {
     $('btnSound').textContent = muted ? '🔇' : '🔊';
 }
 
+function tryLandscapeFullscreen() {
+    if (!isTouch || Math.min(screen.width, screen.height) > 600) return;   // phones only
+    const el = document.documentElement;
+    if (!el.requestFullscreen || document.fullscreenElement) return;
+    el.requestFullscreen().then(() => {
+        if (screen.orientation && screen.orientation.lock) return screen.orientation.lock('landscape');
+    }).catch(() => { /* not allowed here (e.g. iPhone Safari); the rotate screen handles portrait */ });
+}
+
 // ---------- Wire up buttons ----------
-$('btnContinue').onclick = continueGame;
+$('btnContinue').onclick = () => { tryLandscapeFullscreen(); continueGame(); };
 $('btnNew').onclick = () => {
     ensureAudio();
+    tryLandscapeFullscreen();
     if (state && !confirm(`Adopt a new kitty? ${state.catName} will be replaced and progress starts over.`)) return;
     beginAdopt();
 };
@@ -2860,11 +2934,17 @@ $('panelTabs').addEventListener('click', onPanelClick);
 $('btnSound').onclick = e => { e.currentTarget.blur(); toggleMute(); };
 $('btnSettings').onclick = e => { e.currentTarget.blur(); togglePanel('settings'); };
 window.addEventListener('beforeunload', save);
+// iOS only unlocks audio inside a real tap
+document.addEventListener('touchend', ensureAudio, { passive: true });
+document.addEventListener('gesturestart', e => e.preventDefault());
+portraitPhone.addEventListener('change', () => { save(); lastFrame = performance.now(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
 
 // ---------- Start ----------
+setTouch(isTouch);
 buildActionBar();
 buildKittens();
+setupWalkPad();
 state = load();
 showTitle();
 
@@ -2872,9 +2952,13 @@ let lastFrame = performance.now();
 function frame(now) {
     const dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
-    update(dt);
-    render();
-    renderKittens();
+    // Paused while a phone is held upright (the "turn sideways" screen is showing)
+    if (!portraitPhone.matches) {
+        UIK = clamp(720 / (canvas.clientWidth || W), 1, 1.6);
+        update(dt);
+        render();
+        renderKittens();
+    }
     requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
