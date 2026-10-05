@@ -29,7 +29,7 @@ What makes Nintendogs-style games work for kids, and how Paw Pals applies it:
 
 ---
 
-## Current State (v0.2)
+## Current State (v0.3)
 
 ### Flow
 1. **Title** — "Play with <name>" (if a save exists) or "Adopt a Kitty". Enter to start.
@@ -46,20 +46,40 @@ What makes Nintendogs-style games work for kids, and how Paw Pals applies it:
 
 Decay while playing (points per second): food 1/30, clean 1/60, energy 1/35 (not while sleeping), fun 1/25.
 
-### Actions (keys 1–9, or click)
+### Actions (keys 1–9 and 0, or click)
 | Key | Action | What happens |
 |---|---|---|
 | 1 | **Feed 🐟** | Cat walks to the bowl and eats for 3s (+40 food, +2 coins). If food ≥ 90 → "I'm full!" |
 | 2 | **Treat 🍪** | Treat drops from above, cat jumps and catches it (+12 fun, +2 affection). 3 treats max, refill 1 every 90s. |
 | 3 | **Play 🧶** | 15s mini-game: move the toy with the mouse or arrow keys/WASD, the cat chases and pounces (+6 fun each). Pick a toy if you own more than one. Feather wand can fly high so the cat jumps. |
-| 4 | **Wash 🛁** | Cat sits in a bubble tub. Rub it with the mouse or tap Space to scrub → rinse → shake off → clean = 100. Esc stops early (partial clean). |
-| 5 | **Litter 🧹** | Scoops all poops one by one (+1 coin each). You can also click individual poops. |
-| 6 | **Nap 💤** | Cat sleeps in the bed (or rug/floor), room dims, Z's float, energy +3/s. Press again or click the cat to wake it. Auto-naps if energy < 12. |
-| 7 | **Tricks ⭐** | Side panel. Each lesson is a chance to succeed (gets easier with stars & hearts). 5 successes = learned. Learned tricks can be performed for fun/affection. |
-| 8 | **Shop 🛍️** | Tabs: Toys / Home / Dress Up. |
-| 9 | **Dress Up 🎀** | Side panel to wear/remove owned head & neck items. |
+| 4 | **Walk 🌳** | Go outside on a harness & leash with Alex (see *Outdoor Walk* below). The button turns into **Home 🏠** during a walk. |
+| 5 | **Wash 🛁** | Cat sits in a bubble tub. Rub it with the mouse or tap Space to scrub → rinse → shake off → clean = 100. Esc stops early (partial clean). |
+| 6 | **Litter 🧹** | Scoops all poops one by one (+1 coin each). You can also click individual poops. |
+| 7 | **Nap 💤** | Cat sleeps in the bed (or rug/floor), room dims, Z's float, energy +3/s. Press again or click the cat to wake it. Auto-naps if energy < 12. |
+| 8 | **Tricks ⭐** | Side panel. Each lesson is a chance to succeed (gets easier with stars & hearts). 5 successes = learned. Learned tricks can be performed for fun/affection. |
+| 9 | **Shop 🛍️** | Tabs: Toys / Home / Dress Up. |
+| 0 | **Dress Up 🎀** | Side panel to wear/remove owned head & neck items. |
 
-Other controls: **P** (hold) pet, **M** mute, **Esc** close panel / stop mini-game, arrow keys + Enter navigate panels, number keys pick cards in a panel.
+Other controls: **P** (hold) pet, **M** mute, **Esc** close panel / stop mini-game / go home from a walk, arrow keys + Enter navigate panels, number keys pick cards in a panel.
+
+### Outdoor Walk 🌳
+A side-scrolling walk from **home** (left) to the **park** (right, ~4000 px). Alex walks behind holding a red leash clipped to the cat's harness.
+- **Controls:** ←/→ (or A/D) walk, ↑/↓ change lane on the path (dodge puddles!), **Space** (or Enter) interacts with the closest thing — a bouncing "🐾 SPACE" label shows what. Mouse: click the path to walk there, click a thing to walk over and interact. Esc or the Home button goes home; walking back past the house also goes home.
+- **Along the path** (16 things, random order every walk):
+  - 🌼 **Flowers** — sniff (+4 fun); 25% chance of a funny sneeze "Ah-choo! 🤧"
+  - 🦋 **Butterflies** (✨ fireflies at night) — pounce: 45% catch chance, +25% each retry; misses flutter further ahead. Caught ones are let go ("bye-bye!") (+8 fun, +1 coin)
+  - 🐦 **Birds** — pounce for +5 fun; walking right up to them scares them off (+1 fun). Birds always fly away (never caught).
+  - ✨ **Buried treasure** — dig: 40% coins (2–5), 60% a collectible treasure
+  - 💧 **Puddles** (−12 clean) and 🟤 **mud** (−20 clean) — the cat shakes off "Eww, wet! 💦" / "Muddy paws! 🐾"
+  - 🐈 **Neighbour cat** (random fur & name) — say hi, both meow (+6 fun, +1 coin)
+  - 🐕 **Dog behind a fence** — barks "WOOF!" when you get close, cat jumps "Eek! 🙀" (−3 fun)
+- **While walking:** −0.35 energy/s, +0.4 fun/s, −0.08 clean/s. Needs 20 energy to start; under 6 energy the cat says "I'm tired... let's go home 💤".
+- **Reaching the park:** banner + confetti, +5 coins, +2 affection, +10 fun, then back home.
+- **Wants to go out:** after 10 minutes indoors (`state.walkNeed`) the cat thinks 🌳 and the Walk button gets the nudge glow.
+- **Day/night** follows the real clock (same as the window): night sky, moon, stars, dim overlay, fireflies.
+
+### Treasures
+8 collectibles found on walks: 🍂 Crunchy Leaf, 🌰 Acorn, 🪨 Smooth Pebble, 🍄 Tiny Mushroom, 🐚 Snail Shell, 🍀 Lucky Clover, 💎 Shiny Gem (rare, +10 coins), 🗝️ Old Key (rare). First find of each shows a "New treasure!" banner. Every type found appears on a **two-row wall shelf** in the room (`state.treasures` keeps counts).
 
 ### Tricks
 | Trick | Hearts needed | Base chance | Animation |
@@ -99,14 +119,16 @@ All sounds are synthesized with the Web Audio API: meow (sawtooth + sweeping ban
 
 - Canvas is 960×540 (16:9), scaled by CSS to fit; HUD, action bar, panels and screens are HTML on top.
 - The cat is drawn entirely with canvas shapes (`drawCat` in game.js) — front-facing chibi style with poses: sit, walk, eat, sleep, scratch, pounce, highfive, groom; plus lift/rotation/squish for tricks. Wearables are drawn relative to the head.
-- `activity` = what the cat is busy with (eat / treat / play / wash / scoop / sleep / trick). While an activity runs, other actions wiggle "no" (except sleep, which any action wakes from).
+- `scene` = `'room'` or `'walk'`; `walk` holds the outdoor world (objects, camera, Alex's position). During a walk `activity.type === 'walk'` blocks the indoor actions.
+- `activity` = what the cat is busy with (eat / treat / play / wash / scoop / sleep / trick / walk). While an activity runs, other actions wiggle "no" (except sleep, which any action wakes from).
 - `cat.using` = idle furniture behaviour (tree, house, scratcher, tank, bed, toy, groom, potty).
 - Panels: one generic `#panel` element, `.side` variant for tricks / dress up / toy picker so the cat stays visible.
 
 ---
 
 ## Ideas for Next Versions
-- 🐶 **Dogs** — adopt a puppy; needs **walks outside** (new outdoor scene) or it gets unhappy and dirty
+- 🐶 **Dogs** — adopt a puppy; reuse the walk scene, and dogs *need* daily walks or they get unhappy and dirty
+- More walk routes (beach, snowy park, city) and seasonal treasures
 - More pets at once (multiple cats), switching between them
 - Brushing mini-game (fur sparkle), nail trimming
 - More rooms / wallpaper & floor colors in the shop
@@ -118,6 +140,12 @@ All sounds are synthesized with the Web Audio API: meow (sawtooth + sweeping ban
 ---
 
 ## Changelog
+
+### v0.3 — Outdoor walks
+- New **Walk 🌳** action (key 4; Dress Up moved to key 0): side-scrolling walk to the park with Alex holding the leash
+- Flowers, butterflies/fireflies, birds, buried treasure, puddles, mud, a neighbour cat and a barking dog
+- 8 collectible treasures shown on a new wall shelf at home
+- Cat asks to go outside after 10 minutes indoors; fade transitions between scenes
 
 ### v0.2 — A bit more consequence
 - Time-away stat floor lowered from 25 to 10

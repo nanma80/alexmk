@@ -177,7 +177,7 @@ body {
 #actions {
     width: var(--stage-w);
     display: grid;
-    grid-template-columns: repeat(9, 1fr);
+    grid-template-columns: repeat(10, 1fr);
     gap: 6px;
 }
 
@@ -539,3 +539,5 @@ input {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-14px); }
 }
+
+.act.dim { opacity: 0.45; }

@@ -98,6 +98,7 @@ const ACTIONS = [
     { id: 'feed',   icon: '🐟', label: 'Feed' },
     { id: 'treat',  icon: '🍪', label: 'Treat' },
     { id: 'play',   icon: '🧶', label: 'Play' },
+    { id: 'walk',   icon: '🌳', label: 'Walk' },
     { id: 'wash',   icon: '🛁', label: 'Wash' },
     { id: 'litter', icon: '🧹', label: 'Litter' },
     { id: 'nap',    icon: '💤', label: 'Nap' },
@@ -222,6 +223,10 @@ const SFX = {
     nope:    () => { tone(330, 0.12, 'triangle', 0.1); tone(247, 0.18, 'triangle', 0.1, 0.12); },
     tada:    () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i === 3 ? 0.45 : 0.15, 'triangle', 0.12, i * 0.1)),
     click:   () => tone(800, 0.04, 'sine', 0.05),
+    bark:    () => { tone(190, 0.12, 'square', 0.12, 0, 120); noise(0.12, 600, 0.2); tone(200, 0.12, 'square', 0.12, 0.2, 130); noise(0.12, 600, 0.2); },
+    tweet:   () => { tone(2600, 0.07, 'sine', 0.08, 0, 3400); tone(2800, 0.07, 'sine', 0.08, 0.1, 3600); },
+    sniff:   () => { noise(0.08, 2500, 0.08, 3); setTimeout(() => noise(0.08, 2500, 0.08, 3), 160); },
+    sneeze:  () => { noise(0.1, 1500, 0.08); setTimeout(() => noise(0.25, 2200, 0.3, 0.7), 250); },
 };
 
 // ---------- State ----------
@@ -253,6 +258,7 @@ function newState(owner, catName, fur) {
         owned: ['yarn'], wear: { neck: null, head: null },
         tricks: { sit: 0, highfive: 0, spin: 0, jump: 0, rollover: 0 },
         treats: TREAT_MAX, treatTimer: 0,
+        treasures: {}, walkNeed: 0,
         lastSave: Date.now(), lastDay: todayStr(), adopted: Date.now(), bestHeart: 0,
     };
 }
@@ -272,6 +278,7 @@ function load() {
         stats: Object.assign(d.stats, s.stats),
         tricks: Object.assign(d.tricks, s.tricks),
         wear: Object.assign(d.wear, s.wear),
+        treasures: Object.assign({}, s.treasures),
     });
     loaded.bestHeart = Math.max(loaded.bestHeart, levelFor(loaded.affection));
     return loaded;
@@ -318,6 +325,7 @@ function urgentNeed() {
     if (s.clean < 35) list.push({ v: s.clean, icon: '🛁', action: 'wash' });
     if (state.poops >= 2) list.push({ v: 45 - state.poops * 10, icon: '💩', action: 'litter' });
     if (s.fun < 35) list.push({ v: s.fun, icon: '🧶', action: 'play' });
+    if (state.walkNeed > WALK_NEED_SECS) list.push({ v: 39, icon: '🌳', action: 'walk' });
     list.sort((a, b) => a.v - b.v);
     return list[0] || null;
 }
@@ -489,6 +497,13 @@ function drawCat(c, x, y, s, o) {
     }
     drawHead(c, fur, head.x, head.y, o, pose === 'sleep' ? 0.92 : 1);
     if (front) front();
+    if (o.harness && pose !== 'sleep') {
+        const by = pose === 'pounce' ? -24 : pose === 'scratch' ? -36 : -26;
+        c.strokeStyle = '#E53935'; c.lineWidth = 4;
+        c.beginPath(); c.ellipse(0, by - 4, 23, 7, 0, 0, Math.PI); c.stroke();
+        c.beginPath(); c.moveTo(-f * 6, by - 22); c.lineTo(-f * 10, by + 2); c.stroke();
+        ell(c, -f * 6, by - 22, 3.5, 3.5, '#FFD54F');
+    }
     if (o.dirty >= 3) {
         c.strokeStyle = 'rgba(110,140,60,0.6)';
         c.lineWidth = 2;
@@ -766,7 +781,7 @@ function drawFloor() {
 
 function drawWindow() {
     const x = 400, y = 50, w = 160, h = 150;
-    const hr = new Date().getHours(), day = hr >= 7 && hr < 19;
+    const day = !isNight();
     const g = ctx.createLinearGradient(0, y, 0, y + h);
     g.addColorStop(0, day ? '#7FCBFF' : '#1B2550');
     g.addColorStop(1, day ? '#CDEEFF' : '#3B4C8A');
@@ -1041,7 +1056,7 @@ function drawParts() {
             ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.stroke();
             ell(ctx, p.x - p.size * 0.3, p.y - p.size * 0.3, p.size * 0.25, p.size * 0.25, 'rgba(255,255,255,0.8)');
         } else if (p.type === 'drop') {
-            ell(ctx, p.x, p.y, 3, 5, '#64B5F6');
+            ell(ctx, p.x, p.y, 3, 5, p.dropColor || '#64B5F6');
         } else if (p.type === 'label') {
             ctx.font = `bold ${p.size}px "Trebuchet MS", sans-serif`; ctx.textAlign = 'center';
             ctx.lineWidth = 4; ctx.strokeStyle = '#fff'; ctx.strokeText(p.text, p.x, p.y);
@@ -1080,6 +1095,7 @@ function drawBanner() {
 const depthScale = y => 0.88 + (y - WALK.minY) / (WALK.maxY - WALK.minY) * 0.24;
 
 function catView() {
+    if (scene === 'walk' && walk) return walkCatView();
     const a = activity, mood = moodOf(happiness());
     let x = cat.x, y = cat.y, s = depthScale(cat.y);
     const o = {
@@ -1150,9 +1166,18 @@ function catSortY() {
 
 function render() {
     ctx.clearRect(0, 0, W, H);
+    if (scene === 'walk' && walk) {
+        renderWalk();
+        drawParts();
+        drawSpeech();
+        drawBanner();
+        drawFade();
+        return;
+    }
     drawWall();
     drawWindow();
     if (owns('painting')) drawPainting();
+    if (state) drawShelf();
     if (owns('lights')) drawLights();
     drawFloor();
     if (!state) return;
@@ -1197,6 +1222,7 @@ function render() {
         drawParts();
         drawSpeech();
         drawBanner();
+        drawFade();
     }
 }
 
@@ -1380,6 +1406,11 @@ function petCat(amount) {
 function doAction(id) {
     if (screen !== 'home') return;
     ensureAudio();
+    if (activity && activity.type === 'walk') {
+        if (id === 'walk' && scene === 'walk') goHome();
+        else nope(id);
+        return;
+    }
     if (id === 'shop' || id === 'dress') {
         if (activity && (activity.type === 'play' || activity.type === 'wash')) { nope(id); return; }
         togglePanel(id === 'shop' ? 'shop' : 'closet');
@@ -1396,7 +1427,7 @@ function doAction(id) {
         if (id === 'nap') { wakeUp(); return; }
         wakeUp(true);
     }
-    ({ feed: actFeed, treat: actTreat, play: actPlay, wash: actWash, litter: actLitter, nap: actNap })[id]();
+    ({ feed: actFeed, treat: actTreat, play: actPlay, walk: actWalk, wash: actWash, litter: actLitter, nap: actNap })[id]();
 }
 
 function nope(id) {
@@ -1883,11 +1914,592 @@ function moveFocus(dir) {
 }
 
 // =====================================================
+//  Outdoor walk (harness + leash, side-scrolling path)
+// =====================================================
+const TREASURES = [
+    { id: 'leaf',     icon: '🍂', name: 'Crunchy Leaf',  w: 5 },
+    { id: 'acorn',    icon: '🌰', name: 'Acorn',         w: 5 },
+    { id: 'pebble',   icon: '🪨', name: 'Smooth Pebble', w: 4 },
+    { id: 'mushroom', icon: '🍄', name: 'Tiny Mushroom', w: 3 },
+    { id: 'shell',    icon: '🐚', name: 'Snail Shell',   w: 3 },
+    { id: 'clover',   icon: '🍀', name: 'Lucky Clover',  w: 2 },
+    { id: 'gem',      icon: '💎', name: 'Shiny Gem',     w: 1 },
+    { id: 'key',      icon: '🗝️', name: 'Old Key',       w: 1 },
+];
+const FLOWERS = ['🌼', '🌷', '🌻', '🌸'];
+const FRIEND_NAMES = ['Biscuit', 'Shadow', 'Pickles', 'Ziggy', 'Daisy', 'Marble'];
+const PATH = { top: 410, bottom: 515 };
+const WALK_NEED_SECS = 600;   // after 10 minutes indoors the kitty asks to go out
+
+let scene = 'room';   // 'room' | 'walk'
+let walk = null;
+let fade = null;
+
+const isNight = () => { const hr = new Date().getHours(); return hr < 7 || hr >= 19; };
+const rndInt = (a, b) => Math.floor(rnd(a, b + 1));
+const shuffle = arr => { for (let i = arr.length - 1; i > 0; i--) { const j = rndInt(0, i); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+
+function startFade(then) {
+    fade = { t: 0, dur: 0.45, phase: 'out', then };
+}
+
+function updateFade(dt) {
+    if (!fade) return;
+    fade.t += dt;
+    if (fade.t < fade.dur) return;
+    if (fade.phase === 'out') { fade.phase = 'in'; fade.t = 0; fade.then(); }
+    else fade = null;
+}
+
+function drawFade() {
+    if (!fade) return;
+    const k = clamp(fade.t / fade.dur, 0, 1);
+    ctx.fillStyle = `rgba(255,240,232,${fade.phase === 'out' ? k : 1 - k})`;
+    ctx.fillRect(0, 0, W, H);
+}
+
+function actWalk() {
+    if (state.stats.energy < 20) { catSay('Too sleepy for a walk... 💤'); SFX.nope(); return; }
+    startActivity({ type: 'walk' });
+    catSay("Let's go outside! 🌳", 1.2);
+    meow(1.2);
+    startFade(() => {
+        scene = 'walk';
+        walk = makeWalk();
+        parts.length = 0;
+        cat.say = null;
+        cat.facing = 1;
+        state.walkNeed = 0;
+        showHint('← → walk · ↑ ↓ dodge puddles · SPACE to sniff, pounce & dig! 🐾', 7);
+    });
+}
+
+function makeWalk() {
+    const plan = shuffle(['flower', 'butterfly', 'treasure', 'puddle', 'bird', 'flower', 'treasure', 'mud', 'butterfly', 'bird', 'treasure', 'flower', 'puddle', 'butterfly']);
+    plan.splice(rndInt(3, 6), 0, 'friend');
+    plan.splice(rndInt(9, 12), 0, 'dog');
+    const objs = [];
+    let x = 480;
+    for (const type of plan) {
+        x += rnd(180, 250);
+        objs.push(makeWalkObj(type, x));
+    }
+    return {
+        objs, len: x + 600, t: 0,
+        cx: 300, cy: 460, camX: 0,
+        ox: 190, oy: 448, oMoving: false, oFacing: 1,
+        action: null, goal: null, found: [], done: false, endT: 0, leaving: false,
+    };
+}
+
+function makeWalkObj(type, x) {
+    const laneY = () => rnd(PATH.top + 22, PATH.bottom - 12);
+    switch (type) {
+        case 'flower':    return { type, x, y: Math.random() < 0.5 ? PATH.top - 6 : PATH.bottom + 20, icon: pick(FLOWERS) };
+        case 'butterfly': return { type, x, y: 340, hx: x, hy: rnd(320, 370), ph: rnd(0, 6), tries: 0 };
+        case 'treasure':  return { type, x, y: laneY() };
+        case 'puddle':    return { type, x, y: laneY(), rx: 46, ry: 14 };
+        case 'mud':       return { type, x, y: laneY(), rx: 42, ry: 13 };
+        case 'bird':      return { type, x, y: laneY(), hop: rnd(0, 6), dir: 1 };
+        case 'friend':    return { type, x, y: PATH.top - 2, fur: pick(FUR_KEYS.filter(f => f !== state.fur)), name: pick(FRIEND_NAMES) };
+        case 'dog':       return { type, x, y: PATH.top - 18, jump: 0 };
+    }
+    return null;
+}
+
+// Can the cat interact with this object from where it stands?
+function inRange(o) {
+    const dx = Math.abs(walk.cx - o.x), dy = Math.abs(walk.cy - o.y);
+    if (o.type === 'flower') return !o.sniffed && dx < 70 && dy < 120;
+    if (o.type === 'butterfly') return !o.gone && dx < 85;
+    if (o.type === 'bird') return !o.gone && dx < 110 && dy < 70;
+    if (o.type === 'treasure') return !o.found && dx < 55 && dy < 45;
+    if (o.type === 'friend') return !o.met && dx < 85 && dy < 120;
+    return false;
+}
+
+function nearestInteractable() {
+    let best = null, bd = Infinity;
+    for (const o of walk.objs) {
+        if (!inRange(o)) continue;
+        const d = Math.abs(walk.cx - o.x);
+        if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+}
+
+function walkAction(type, dur, onDone) {
+    walk.action = { type, t: 0, dur, onDone };
+}
+
+function walkInteract(o) {
+    const w = walk;
+    if (!w || w.action || w.done || fade) return;
+    if (!o) { walkAction('pounce', 0.45); SFX.boing(); return; }
+    if (o.x !== w.cx) cat.facing = o.x > w.cx ? 1 : -1;
+    w.goal = null;
+    if (o.type === 'flower') {
+        o.sniffed = true;
+        walkAction('sniff', 1.3, () => {
+            if (Math.random() < 0.25) { catSay('Ah-choo! 🤧'); SFX.sneeze(); cat.shakeT = 0.4; }
+            else catSay(`Sniff sniff... ${o.icon}`);
+            addStat('fun', 4);
+            hearts(1);
+        });
+        SFX.sniff();
+    } else if (o.type === 'butterfly') {
+        SFX.boing();
+        walkAction('pounce', 0.45, () => {
+            const bug = isNight() ? 'firefly ✨' : 'butterfly 🦋';
+            if (Math.random() < 0.45 + 0.25 * o.tries) {
+                o.gone = true;
+                catSay(`Got it! ...bye-bye ${bug}`);
+                addStat('fun', 8);
+                hearts(2);
+                reward(1, 0.5);
+            } else {
+                o.tries++;
+                o.hx += cat.facing * rnd(90, 140);   // it flutters further down the path
+                catSay('So close! 😹');
+                addStat('fun', 2);
+            }
+        });
+    } else if (o.type === 'bird') {
+        SFX.boing();
+        walkAction('pounce', 0.45);
+        birdFly(o, true);
+    } else if (o.type === 'treasure') {
+        walkAction('dig', 1.0, () => findTreasure(o));
+        SFX.scrub();
+    } else if (o.type === 'friend') {
+        o.met = true;
+        meow(1.3);
+        setTimeout(() => meow(1.05), 450);
+        walkAction('greet', 1.4, () => {
+            catSay(`Hi ${o.name}! 😺`);
+            hearts(3);
+            addPart({ text: '💕', x: o.x - w.camX, y: o.y - 90, vy: -40, life: 1.4, size: 26 });
+            addStat('fun', 6);
+            reward(1, 0.5);
+        });
+    }
+}
+
+function birdFly(o, pounced) {
+    o.gone = true;
+    o.dir = cat.facing;
+    SFX.tweet();
+    if (pounced) { addStat('fun', 5); catSay('Tweet tweet! 🐦'); hearts(1); }
+    else addStat('fun', 1);
+}
+
+function splashInto(o) {
+    const w = walk, mud = o.type === 'mud';
+    o.hit = true;
+    addStat('clean', mud ? -20 : -12);
+    walkAction('shake', 0.8);
+    SFX.splash();
+    for (let i = 0; i < 12; i++) {
+        addPart({ type: 'drop', x: o.x - w.camX + rnd(-30, 30), y: o.y - 5, vx: rnd(-120, 120), vy: rnd(-220, -80), g: 500, life: 0.7, dropColor: mud ? '#8D6E4C' : '#64B5F6' });
+    }
+    catSay(mud ? 'Muddy paws! 🐾' : 'Eww, wet! 💦');
+}
+
+function dogBark(o) {
+    o.barked = true;
+    o.jump = 0.6;
+    SFX.bark();
+    floatText(o.x - walk.camX, o.y - 70, 'WOOF!', '#8D5A3B');
+    walkAction('scared', 0.9);
+    catSay('Eek! 🙀');
+    addStat('fun', -3);
+}
+
+function findTreasure(o) {
+    const w = walk;
+    o.found = true;
+    o.remove = true;
+    sparkles(o.x - w.camX, o.y - 20, 6);
+    if (Math.random() < 0.4) {
+        const coins = rndInt(2, 5);
+        catSay(`Found ${coins} coins! 🪙`);
+        reward(coins, 0);
+        return;
+    }
+    let r = rnd(0, TREASURES.reduce((n, t) => n + t.w, 0));
+    const tr = TREASURES.find(t => (r -= t.w) <= 0) || TREASURES[0];
+    const isNew = !state.treasures[tr.id];
+    state.treasures[tr.id] = (state.treasures[tr.id] || 0) + 1;
+    w.found.push(tr.icon);
+    if (isNew) {
+        showBanner(`New treasure! ${tr.icon}`, `${tr.name} — it goes on your shelf at home`, 2.5);
+        SFX.tada();
+    } else {
+        catSay(`Another ${tr.name}! ${tr.icon}`);
+        SFX.sparkle();
+    }
+    reward(tr.id === 'gem' ? 10 : 1, 0.5);
+}
+
+function arrivePark() {
+    const w = walk;
+    w.done = true;
+    w.endT = 3;
+    cat.facing = 1;
+    const n = w.found.length;
+    showBanner('You made it to the park! 🌳', `+5 🪙 · ${n} treasure${n === 1 ? '' : 's'} found`);
+    SFX.tada();
+    confetti(30);
+    addStat('fun', 10);
+    reward(5, 2);
+}
+
+function goHome(msg) {
+    if (!walk || walk.leaving) return;
+    walk.leaving = true;
+    startFade(() => {
+        scene = 'room';
+        walk = null;
+        endActivity();
+        hideHint();
+        parts.length = 0;
+        Object.assign(cat, { x: 480, y: 460, facing: 1, target: null, onArrive: null, moving: false });
+        catSay(msg || 'Home sweet home! 🏠');
+        save();
+    });
+}
+
+function updateWalk(dt) {
+    const w = walk;
+    w.t += dt;
+    if (fade || w.leaving) return;
+    if (w.action) {
+        w.action.t += dt;
+        if (w.action.type === 'pounce') w.cx = clamp(w.cx + cat.facing * 70 * dt, 150, w.len - 60);
+        if (w.action.t >= w.action.dur) {
+            const done = w.action.onDone;
+            w.action = null;
+            if (done) done();
+        }
+    }
+
+    let kx = (keys.arrowright || keys.d ? 1 : 0) - (keys.arrowleft || keys.a ? 1 : 0);
+    let ky = (keys.arrowdown || keys.s ? 1 : 0) - (keys.arrowup || keys.w ? 1 : 0);
+    if (kx || ky) w.goal = null;
+    else if (w.goal && !w.action) {
+        const g = w.goal;
+        if (g.obj && inRange(g.obj)) { walkInteract(g.obj); }
+        else {
+            const dx = g.x - w.cx, dy = g.y - w.cy;
+            if (Math.abs(dx) < 8 && Math.abs(dy) < 8) w.goal = null;
+            kx = Math.abs(dx) >= 8 ? Math.sign(dx) : 0;
+            ky = Math.abs(dy) >= 8 ? Math.sign(dy) : 0;
+        }
+    }
+
+    if (!w.action && !w.done && (kx || ky)) {
+        w.cx = clamp(w.cx + kx * 150 * dt, 150, w.len - 60);
+        w.cy = clamp(w.cy + ky * 100 * dt, PATH.top + 8, PATH.bottom);
+        if (kx) cat.facing = kx;
+        cat.moving = true;
+        addStat('energy', -0.35 * dt);
+        addStat('fun', 0.4 * dt);
+        addStat('clean', -0.08 * dt);
+    }
+    w.camX = clamp(w.cx - W * 0.4, 0, w.len - W);
+
+    // Alex follows behind, holding the leash
+    const otx = w.cx - cat.facing * 115, dxo = otx - w.ox;
+    w.ox += dxo * Math.min(1, dt * 2.5);
+    w.oy += (w.cy - 12 - w.oy) * Math.min(1, dt * 2.5);
+    w.oMoving = Math.abs(dxo) > 6;
+    if (Math.abs(w.cx - w.ox) > 4) w.oFacing = w.cx > w.ox ? 1 : -1;
+
+    for (const o of w.objs) {
+        const near = Math.abs(w.cx - o.x);
+        if (o.type === 'butterfly') {
+            if (o.gone) { o.y -= 90 * dt; o.x += 50 * dt; if (o.y < -40) o.remove = true; continue; }
+            o.x = o.hx + Math.sin(w.t * 0.8 + o.ph) * 40;
+            o.y = o.hy + Math.sin(w.t * 2.3 + o.ph) * 18;
+        } else if (o.type === 'bird') {
+            if (o.gone) { o.y -= 160 * dt; o.x += o.dir * 120 * dt; if (o.y < -40) o.remove = true; continue; }
+            if (near < 55 && cat.moving) birdFly(o, false);
+        } else if ((o.type === 'puddle' || o.type === 'mud') && !o.hit && !w.action) {
+            if (((w.cx - o.x) / o.rx) ** 2 + ((w.cy - o.y) / (o.ry + 8)) ** 2 < 1) splashInto(o);
+        } else if (o.type === 'dog') {
+            o.jump = Math.max(0, o.jump - dt);
+            if (!o.barked && near < 130 && !w.action) dogBark(o);
+        }
+    }
+    w.objs = w.objs.filter(o => !o.remove);
+
+    if (w.done) {
+        w.endT -= dt;
+        if (w.endT <= 0) goHome();
+    } else if (w.cx < 175 && w.t > 2) {
+        goHome('Back home! 🏠');
+    } else if (w.cx >= w.len - 330) {
+        arrivePark();
+    } else if (state.stats.energy < 6) {
+        w.done = true;
+        w.endT = 2;
+        catSay("I'm tired... let's go home 💤", 2);
+    }
+}
+
+function handleWalkClick(p) {
+    const w = walk;
+    if (!w || fade || w.done || w.leaving) return;
+    const wx = p.x + w.camX;
+    let target = null;
+    for (const o of w.objs) {
+        const oy = o.type === 'butterfly' ? o.y : o.y - 15;
+        if (['flower', 'butterfly', 'bird', 'treasure', 'friend'].includes(o.type) && Math.abs(o.x - wx) < 45 && Math.abs(oy - p.y) < 55) target = o;
+    }
+    if (target) {
+        if (inRange(target)) walkInteract(target);
+        else w.goal = { x: target.x - Math.sign(target.x - w.cx) * 30, y: clamp(target.y, PATH.top + 8, PATH.bottom), obj: target };
+        return;
+    }
+    w.goal = { x: wx, y: clamp(p.y, PATH.top + 8, PATH.bottom) };
+}
+
+function walkCatView() {
+    const w = walk;
+    const o = {
+        fur: state.fur, facing: cat.facing, t: cat.t, pose: cat.moving ? 'walk' : 'sit',
+        mood: moodOf(happiness()), eyes: 'open', blink: cat.blink > 0,
+        neck: state.wear.neck, headItem: state.wear.head, dirty: dirtLevel(), lift: 0, harness: true,
+    };
+    if (cat.happyT > 0) o.eyes = 'happy';
+    if (cat.mouthT > 0) o.mouth = 'open';
+    if (cat.shakeT > 0) o.tilt = Math.sin(cat.t * 30) * 0.25;
+    const a = w.action;
+    if (a) {
+        const p = clamp(a.t / a.dur, 0, 1);
+        if (a.type === 'sniff') { o.pose = 'eat'; o.eyes = 'closed'; }
+        else if (a.type === 'pounce') { o.pose = 'pounce'; o.lift = Math.sin(p * Math.PI) * 40; }
+        else if (a.type === 'dig') o.pose = Math.sin(a.t * 16) > 0 ? 'pounce' : 'eat';
+        else if (a.type === 'scared') { o.lift = Math.sin(p * Math.PI) * 50; o.mouth = 'open'; o.mood = 'sad'; }
+        else if (a.type === 'shake') { o.rot = Math.sin(a.t * 40) * 0.15; o.eyes = 'closed'; }
+        else if (a.type === 'greet') { o.eyes = 'happy'; o.mood = 'happy'; }
+    } else if (w.done) {
+        o.eyes = 'happy';
+    }
+    return { x: w.cx - w.camX, y: w.cy, s: depthScale(w.cy), o };
+}
+
+// Alex, the owner: a simple chibi kid holding the leash. Returns the hand position.
+function drawOwner(x, y, s, t, moving, f) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ell(ctx, 0, 0, 22, 6, 'rgba(60,30,10,0.18)');
+    const step = moving ? Math.sin(t * 10) * 7 : 0;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#5B7DB8'; ctx.lineWidth = 9;
+    ctx.beginPath(); ctx.moveTo(-5, -40); ctx.lineTo(-5 + step, -6); ctx.moveTo(5, -40); ctx.lineTo(5 - step, -6); ctx.stroke();
+    ell(ctx, -5 + step + f * 3, -4, 7, 4, '#FF6F91');
+    ell(ctx, 5 - step + f * 3, -4, 7, 4, '#FF6F91');
+    ctx.strokeStyle = '#F9D7BE'; ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.moveTo(-f * 12, -70); ctx.lineTo(-f * 16 - step * 0.5, -48); ctx.stroke();
+    ctx.fillStyle = '#FF8FB1';
+    rrect(ctx, -16, -82, 32, 46, 12); ctx.fill();
+    ctx.strokeStyle = '#F9D7BE';
+    ctx.beginPath(); ctx.moveTo(f * 12, -72); ctx.lineTo(f * 24, -58); ctx.stroke();
+    ell(ctx, f * 24, -58, 5, 5, '#F9D7BE');
+    // Head with a brown bob
+    ell(ctx, 0, -104, 24, 22, '#6B3E26');
+    ell(ctx, 0, -100, 19, 19, '#F9D7BE');
+    ctx.fillStyle = '#6B3E26';
+    ctx.beginPath(); ctx.ellipse(0, -110, 21, 12, 0, Math.PI, 0); ctx.fill();
+    ell(ctx, f * 4 - 6, -100, 2.2, 2.6, '#3A2A22');
+    ell(ctx, f * 4 + 6, -100, 2.2, 2.6, '#3A2A22');
+    ctx.strokeStyle = '#B5524F'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.arc(f * 4, -94, 4, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,120,150,0.35)';
+    ctx.beginPath(); ctx.arc(f * 4 - 12, -95, 3.5, 0, Math.PI * 2); ctx.arc(f * 4 + 12, -95, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    return { x: x + f * 24 * s, y: y - 58 * s };
+}
+
+function drawWalkTree(x, base, k, c1, c2) {
+    ctx.fillStyle = '#8B5E3C';
+    ctx.fillRect(x - 7 * k, base - 45 * k, 14 * k, 45 * k);
+    ell(ctx, x, base - 65 * k, 40 * k, 44 * k, c1);
+    ell(ctx, x - 12 * k, base - 75 * k, 22 * k, 20 * k, c2);
+}
+
+function renderWalk() {
+    const w = walk, cam = w.camX, night = isNight();
+    // Sky
+    const g = ctx.createLinearGradient(0, 0, 0, 330);
+    g.addColorStop(0, night ? '#1B2550' : '#7FCBFF');
+    g.addColorStop(1, night ? '#3B4C8A' : '#D6F1FF');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, 340);
+    if (night) {
+        ell(ctx, W - 140, 80, 26, 26, '#FFF6C9');
+        ell(ctx, W - 128, 72, 23, 23, '#26336A');
+        for (let i = 0; i < 24; i++) {
+            ctx.globalAlpha = 0.5 + 0.5 * Math.sin(time * 2 + i);
+            ell(ctx, (i * 137 - cam * 0.05) % W + (i * 137 - cam * 0.05 < 0 ? W : 0), 20 + (i * 61) % 200, 1.8, 1.8, '#fff');
+        }
+        ctx.globalAlpha = 1;
+    } else {
+        ell(ctx, W - 140, 80, 34, 34, '#FFE066');
+        for (let i = 0; i < 5; i++) {
+            const cx = ((i * 260 - cam * 0.1 + time * 6) % (W + 200) + W + 200) % (W + 200) - 100, cy = 60 + (i % 3) * 45;
+            ell(ctx, cx, cy, 40, 16, '#fff'); ell(ctx, cx + 22, cy - 10, 24, 16, '#fff'); ell(ctx, cx - 20, cy - 5, 20, 13, '#fff');
+        }
+    }
+    // Hills and background trees (parallax)
+    for (let i = Math.floor(cam * 0.25 / 380) - 1; i * 380 - cam * 0.25 < W + 400; i++) {
+        ell(ctx, i * 380 - cam * 0.25, 335, 260, 110, i % 2 ? '#9ED27E' : '#8CC66C');
+    }
+    for (let i = Math.floor(cam * 0.55 / 210) - 1; i * 210 - cam * 0.55 < W + 200; i++) {
+        const v = (Math.sin(i * 12.9898) * 43758.5453) % 1;
+        drawWalkTree(i * 210 - cam * 0.55 + v * 60, 340, 0.8 + Math.abs(v) * 0.4, '#5DAE5B', '#77C36F');
+    }
+    // Grass and path
+    ctx.fillStyle = '#8FD06F';
+    ctx.fillRect(0, 330, W, H - 330);
+    ctx.fillStyle = '#EBD7A8';
+    ctx.fillRect(0, PATH.top, W, PATH.bottom - PATH.top + 22);
+    ctx.fillStyle = '#D9C08A';
+    ctx.fillRect(0, PATH.top, W, 4);
+    ctx.fillRect(0, PATH.bottom + 18, W, 4);
+    for (let i = Math.floor(cam / 70); i * 70 - cam < W + 70; i++) {
+        ell(ctx, i * 70 - cam + (i * 29) % 40, PATH.top + 22 + (i * 37) % 80, 3.5, 2.2, '#D4BC8A');
+        ctx.strokeStyle = '#6DB552'; ctx.lineWidth = 2;
+        const gx = i * 70 - cam + 20;
+        ctx.beginPath(); ctx.moveTo(gx, PATH.top - 2); ctx.lineTo(gx - 4, PATH.top - 12); ctx.moveTo(gx + 4, PATH.top - 2); ctx.lineTo(gx + 6, PATH.top - 13); ctx.stroke();
+    }
+    // Home at the start, park at the end
+    const hx = 40 - cam;
+    if (hx > -260) {
+        ctx.fillStyle = '#FFD6C2'; ctx.fillRect(hx, 230, 190, 112);
+        ctx.fillStyle = '#C8644B';
+        ctx.beginPath(); ctx.moveTo(hx - 15, 236); ctx.lineTo(hx + 95, 165); ctx.lineTo(hx + 205, 236); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#B85C4A'; rrect(ctx, hx + 120, 270, 40, 72, 6); ctx.fill();
+        ell(ctx, hx + 152, 308, 3, 3, '#FFD54F');
+        ctx.fillStyle = '#BFE6FF'; ctx.fillRect(hx + 25, 260, 50, 40);
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.strokeRect(hx + 25, 260, 50, 40);
+        ctx.font = '22px serif'; ctx.textAlign = 'center'; ctx.fillText('🐾', hx + 140, 262);
+    }
+    const px = w.len - 230 - cam;
+    if (px < W + 200) {
+        drawWalkTree(px + 60, 400, 2, '#4E9E4C', '#6BBF63');
+        ctx.fillStyle = '#A0522D';
+        ctx.fillRect(px - 110, 372, 110, 10); ctx.fillRect(px - 110, 352, 110, 8);
+        ctx.fillRect(px - 104, 382, 8, 22); ctx.fillRect(px - 14, 382, 8, 22);
+        ctx.fillStyle = '#C49A6C'; ctx.fillRect(px - 180, 330, 8, 80);
+        ctx.fillStyle = '#E2C08F'; rrect(ctx, px - 230, 300, 110, 40, 8); ctx.fill();
+        ctx.fillStyle = '#5A3E36'; ctx.font = 'bold 20px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('🌳 PARK', px - 175, 327);
+    }
+    // Ground decals: puddles, mud, buried treasure
+    for (const o of w.objs) {
+        const x = o.x - cam;
+        if (x < -80 || x > W + 80) continue;
+        if (o.type === 'puddle') {
+            ell(ctx, x, o.y, o.rx, o.ry, '#7EC8F0');
+            ell(ctx, x - 10, o.y - 3, o.rx * 0.4, o.ry * 0.35, 'rgba(255,255,255,0.6)');
+        } else if (o.type === 'mud') {
+            ell(ctx, x, o.y, o.rx, o.ry, '#8D6E4C');
+            ell(ctx, x + 12, o.y - 2, 10, 4, '#7A5C3E');
+        } else if (o.type === 'treasure') {
+            ell(ctx, x, o.y, 16, 6, '#C9A66B');
+            ctx.globalAlpha = 0.6 + 0.4 * Math.sin(time * 5 + o.x);
+            ctx.font = '20px serif'; ctx.textAlign = 'center';
+            ctx.fillText('✨', x, o.y - 4);
+            ctx.globalAlpha = 1;
+        }
+    }
+    // Depth-sorted things standing on the ground
+    const list = [];
+    for (const o of w.objs) {
+        const x = o.x - cam;
+        if (x < -120 || x > W + 120) continue;
+        if (o.type === 'flower') list.push({ y: o.y, d: () => { ctx.font = '30px serif'; ctx.textAlign = 'center'; ctx.fillText(o.icon, x, o.y); } });
+        else if (o.type === 'bird' && !o.gone) list.push({ y: o.y, d: () => { ctx.font = '26px serif'; ctx.textAlign = 'center'; ctx.fillText('🐦', x, o.y - Math.abs(Math.sin(w.t * 6 + o.hop)) * 4); } });
+        else if (o.type === 'friend') list.push({ y: o.y, d: () => {
+            drawCat(ctx, x, o.y, 0.85, { fur: o.fur, facing: -1, t: w.t + 3, pose: 'sit', mood: 'happy', eyes: o.met ? 'happy' : 'open', blink: Math.sin(w.t * 1.7) > 0.97 });
+            if (o.met) { ctx.font = 'bold 14px "Trebuchet MS", sans-serif'; ctx.fillStyle = '#5A3E36'; ctx.textAlign = 'center'; ctx.fillText(o.name, x, o.y - 105); }
+        } });
+        else if (o.type === 'dog') list.push({ y: o.y, d: () => {
+            ctx.font = '46px serif'; ctx.textAlign = 'center';
+            ctx.fillText('🐕', x, o.y - 6 - Math.sin(o.jump / 0.6 * Math.PI) * 30);
+            ctx.fillStyle = '#FFFFFF';
+            for (let fx = -90; fx <= 90; fx += 30) { ctx.fillRect(x + fx - 4, o.y - 38, 8, 42); }
+            ctx.fillRect(x - 94, o.y - 30, 188, 6); ctx.fillRect(x - 94, o.y - 12, 188, 6);
+        } });
+    }
+    const v = walkCatView();
+    list.push({ y: w.cy, d: () => drawCat(ctx, v.x, v.y, v.s, v.o) });
+    let hand = null;
+    list.push({ y: w.oy, d: () => { hand = drawOwner(w.ox - cam, w.oy, depthScale(w.oy) * 1.05, w.t, w.oMoving, w.oFacing); } });
+    list.sort((a, b) => a.y - b.y);
+    for (const item of list) item.d();
+    // Leash from Alex's hand to the harness
+    if (hand) {
+        const ax = v.x - cat.facing * 6 * v.s, ay = v.y - (44 + v.o.lift) * v.s;
+        ctx.strokeStyle = '#E53935'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(hand.x, hand.y);
+        ctx.quadraticCurveTo((hand.x + ax) / 2, Math.max(hand.y, ay) + 30, ax, ay);
+        ctx.stroke();
+    }
+    if (night) { ctx.fillStyle = 'rgba(20,30,80,0.35)'; ctx.fillRect(0, 0, W, H); }
+    // Butterflies (day) / fireflies (night) fly above everything
+    for (const o of w.objs) {
+        if (o.type !== 'butterfly') continue;
+        const x = o.x - cam;
+        if (night) {
+            const glow = ctx.createRadialGradient(x, o.y, 0, x, o.y, 18);
+            glow.addColorStop(0, 'rgba(255,250,150,0.95)');
+            glow.addColorStop(1, 'rgba(255,250,150,0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath(); ctx.arc(x, o.y, 18, 0, Math.PI * 2); ctx.fill();
+        } else {
+            ctx.save(); ctx.translate(x, o.y);
+            ctx.scale(0.4 + Math.abs(Math.sin(w.t * 12 + o.ph)) * 0.6, 1);
+            ctx.font = '26px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText('🦋', 0, 0);
+            ctx.restore();
+            ctx.textBaseline = 'alphabetic';
+        }
+    }
+    // "Press SPACE" prompt over the closest thing to interact with
+    if (!w.action && !w.done && !fade) {
+        const o = nearestInteractable();
+        if (o) {
+            const bx = o.x - cam, by = (o.type === 'butterfly' ? o.y - 30 : o.type === 'friend' ? o.y - 125 : o.y - 45) + Math.sin(time * 5) * 3;
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            rrect(ctx, bx - 42, by - 18, 84, 26, 10); ctx.fill();
+            ctx.fillStyle = '#FF6F9C'; ctx.font = 'bold 15px "Trebuchet MS", sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText('🐾 SPACE', bx, by);
+        }
+    }
+}
+
+// Treasures found on walks are displayed on a wall shelf at home
+function drawShelf() {
+    const found = TREASURES.filter(t => state.treasures[t.id]);
+    if (!found.length) return;
+    for (const y of [215, 265]) {
+        ctx.fillStyle = '#C49A6C'; ctx.fillRect(240, y, 100, 8);
+        ctx.fillStyle = '#A97E52'; ctx.fillRect(248, y + 8, 6, 8); ctx.fillRect(326, y + 8, 6, 8);
+    }
+    ctx.font = '20px serif'; ctx.textAlign = 'center';
+    found.forEach((t, i) => ctx.fillText(t.icon, 254 + (i % 4) * 24, (i < 4 ? 215 : 265) - 3));
+}
+
+// =====================================================
 //  HUD
 // =====================================================
 function buildActionBar() {
     $('actions').innerHTML = ACTIONS.map((a, i) =>
-        `<button class="act" data-id="${a.id}" title="${a.label} (${i + 1})"><span class="key">${i + 1}</span><span class="emoji">${a.icon}</span><span class="label">${a.label}</span>${a.id === 'treat' ? '<span class="badge" id="treatBadge"></span>' : ''}</button>`
+        `<button class="act" data-id="${a.id}" title="${a.label} (${(i + 1) % 10})"><span class="key">${(i + 1) % 10}</span><span class="emoji">${a.icon}</span><span class="label">${a.label}</span>${a.id === 'treat' ? '<span class="badge" id="treatBadge"></span>' : ''}</button>`
     ).join('');
     $('actions').addEventListener('click', e => {
         const b = e.target.closest('.act');
@@ -1918,6 +2530,11 @@ function updateHUD() {
     $('treatBadge').textContent = state.treats;
     const need = activity ? null : urgentNeed();
     document.querySelectorAll('.act').forEach(b => b.classList.toggle('nudge', !!need && b.dataset.id === need.action));
+    const walking = scene === 'walk';
+    document.querySelectorAll('.act').forEach(b => b.classList.toggle('dim', walking && b.dataset.id !== 'walk'));
+    const wb = document.querySelector('.act[data-id="walk"]');
+    wb.querySelector('.emoji').textContent = walking ? '🏠' : '🌳';
+    wb.querySelector('.label').textContent = walking ? 'Home' : 'Walk';
     if (currentPanel === 'shop') $('panelTitle').textContent = `🛍️ Shop — 🪙 ${state.coins}`;
 }
 
@@ -1957,8 +2574,15 @@ function update(dt) {
     }
 
     if (banner) { banner.t -= dt; if (banner.t <= 0) banner = null; }
-    updateActivity(dt);
-    updateCat(dt);
+    updateFade(dt);
+    if (scene === 'walk' && walk) {
+        updateCat(dt);
+        updateWalk(dt);
+    } else {
+        state.walkNeed += dt;
+        updateActivity(dt);
+        updateCat(dt);
+    }
     updateParts(dt);
 
     timers.hud -= dt;
@@ -2051,6 +2675,9 @@ function adoptGo() {
 
 function startHome(minsAway, isNew, lostHeart) {
     showScreen('home');
+    scene = 'room';
+    walk = null;
+    fade = null;
     activity = null;
     bowlFull = false;
     parts.length = 0;
@@ -2099,7 +2726,7 @@ function overCat(x, y) {
 }
 
 canvas.addEventListener('pointermove', e => {
-    if (screen !== 'home') return;
+    if (screen !== 'home' || scene === 'walk') return;
     const p = canvasPos(e);
     const moved = mouse.over ? dist(mouse.x, mouse.y, p.x, p.y) : 0;
     mouse.x = p.x; mouse.y = p.y; mouse.over = true;
@@ -2117,6 +2744,7 @@ canvas.addEventListener('pointerdown', e => {
     if (screen !== 'home') return;
     ensureAudio();
     const p = canvasPos(e);
+    if (scene === 'walk') { handleWalkClick(p); return; }
     const a = activity;
     if (a && (a.type === 'play' || a.type === 'wash')) { if (a.type === 'wash' && overCat(p.x, p.y)) scrub(5); return; }
     for (let i = state.poops - 1; i >= 0; i--) {
@@ -2168,6 +2796,14 @@ window.addEventListener('keydown', e => {
     }
     // Home screen
     if (k === 'm') { toggleMute(); return; }
+    if (activity && activity.type === 'walk' && !currentPanel) {
+        if (k === ' ' || k.startsWith('arrow')) e.preventDefault();
+        if (scene !== 'walk' || e.repeat) return;
+        if (k === ' ' || k === 'enter') walkInteract(nearestInteractable());
+        else if (k === 'escape') goHome();
+        else if (/^[0-9]$/.test(k)) doAction(ACTIONS[(+k + 9) % 10].id);
+        return;
+    }
     if (currentPanel) {
         if (k === 'escape') { closePanel(); return; }
         if (['arrowleft', 'arrowup'].includes(k)) { e.preventDefault(); moveFocus(-1); return; }
@@ -2191,7 +2827,7 @@ window.addEventListener('keydown', e => {
         if (k === 'escape' && !a.walking && a.phase === 'scrub') finishWash(false);
         return;
     }
-    if (/^[1-9]$/.test(k)) { doAction(ACTIONS[+k - 1].id); return; }
+    if (/^[0-9]$/.test(k)) { doAction(ACTIONS[(+k + 9) % 10].id); return; }
     if (k === ' ') e.preventDefault();
 });
 
