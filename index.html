@@ -8,31 +8,52 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 0 20px;
-            color: #333;
+            background: #f5f7fb;
+            color: #243047;
+            line-height: 1.5;
         }
-        h1 { margin-bottom: 8px; }
-        p.subtitle { color: #666; margin-bottom: 32px; }
-        ul { list-style: none; }
-        li { margin-bottom: 12px; }
+        main {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 56px 20px;
+        }
+        h1 { font-size: clamp(2rem, 7vw, 2.75rem); letter-spacing: -0.04em; }
+        .subtitle { color: #59657a; font-size: 18px; margin: 8px 0 28px; }
+        ul { list-style: none; display: grid; gap: 14px; }
         a {
-            color: #0969da;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            min-height: 84px;
+            padding: 20px 24px;
+            border: 1px solid #dce3ee;
+            border-radius: 16px;
+            background: #fff;
+            color: #243047;
             text-decoration: none;
-            font-size: 1.1em;
+            box-shadow: 0 2px 6px #24304706;
         }
-        a:hover { text-decoration: underline; }
-        .empty { color: #999; font-style: italic; }
+        a:hover { border-color: #9db6df; background: #fafdff; }
+        a:focus-visible { outline: 3px solid #2563eb; outline-offset: 4px; }
+        .name { display: block; font-size: 24px; font-weight: 650; }
+        .note { display: block; margin-top: 4px; color: #59657a; font-size: 16px; }
+        .arrow { color: #42659a; font-size: 24px; flex-shrink: 0; }
+        @media (max-width: 480px) {
+            main { padding: 32px 16px; }
+            a { padding: 18px 20px; }
+        }
     </style>
 </head>
 <body>
-    <h1>Alex's Games</h1>
-    <p class="subtitle">A collection of games by Alex</p>
-    <ul>
-        <li><a href="portal2d/portal2d.html">Portal 2D</a></li>
-        <li><a href="calamity2d/">Calamity 2D</a></li>
-        <li><a href="paw-pals/">Paw Pals</a></li>
-    </ul>
+    <main>
+        <h1>Alex's Games</h1>
+        <p class="subtitle">A collection of games by Alex</p>
+        <ul>
+            <li><a href="paw-pals/"><span class="name">Paw Pals</span><span class="arrow" aria-hidden="true">&rarr;</span></a></li>
+            <li><a href="calamity2d/"><span><span class="name">Calamity 2D</span><span class="note">(need keyboard and mouse)</span></span><span class="arrow" aria-hidden="true">&rarr;</span></a></li>
+            <li><a href="portal2d/portal2d.html"><span><span class="name">Portal 2D</span><span class="note">(need keyboard and mouse)</span></span><span class="arrow" aria-hidden="true">&rarr;</span></a></li>
+        </ul>
+    </main>
 </body>
 </html>
